@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TrendPulse Signup</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Create Account</h1>
+      <p>Basic signup page with MongoDB storage.</p>
+
+      <form id="signupForm">
+        <label for="name">Name</label>
+        <input id="name" type="text" required />
+
+        <label for="email">Email</label>
+        <input id="email" type="email" required />
+
+        <label for="password">Password</label>
+        <input id="password" type="password" minlength="6" required />
+
+        <button type="submit">Sign Up</button>
+      </form>
+
+      <p class="message" id="message"></p>
+      <p>Already have an account? <a class="link" href="/login.html">Login</a></p>
+    </div>
+
+    <script src="/signup.js"></script>
+  </body>
+</html>

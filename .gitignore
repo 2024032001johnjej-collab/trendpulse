@@ -1,0 +1,6 @@
+node_modules/
+.env
+.tmp_trendpulse_import/
+*.log
+.DS_Store
+Thumbs.db

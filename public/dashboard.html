@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TrendPulse Dashboard</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="dashboard">
+      <div class="top-row">
+        <h1>TrendPulse Dashboard</h1>
+        <button id="logoutBtn" style="max-width: 130px">Logout</button>
+      </div>
+      <p>This is a protected page (requires valid login token).</p>
+
+      <div class="user-card">
+        <strong>User Profile</strong>
+        <p id="userName">Loading...</p>
+        <p id="userEmail"></p>
+      </div>
+
+      <p class="message" id="message"></p>
+    </div>
+
+    <script src="/dashboard.js"></script>
+  </body>
+</html>
