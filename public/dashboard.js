@@ -429,54 +429,501 @@ window.updateChartsTheme = function() {
 
 window.generatePDFReport = function(btn) {
     const originalText = btn.innerHTML;
-    // Maintain a loading state with spinner
-    btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> <span class="whitespace-nowrap">Distilling PDF...</span>';
-    
+    btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> <span class="whitespace-nowrap">Compiling Report...</span>';
+
+    const reportTimestamp = new Date();
+    const reportTimeStr = reportTimestamp.toLocaleString('en-US', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+    });
+    const reportTimeShort = reportTimestamp.toLocaleTimeString('en-US', { hour12: false });
+
+    // Capture chart images before PDF generation
+    const donutCanvas = document.getElementById('donutChart');
+    const lineCanvas = document.getElementById('lineChart');
+    const wordCloudCanvas = document.getElementById('wordCloudCanvas');
+
+    const donutImg = donutCanvas.toDataURL('image/png', 1.0);
+    const lineImg = lineCanvas.toDataURL('image/png', 1.0);
+    let wordCloudImg = null;
+    try { wordCloudImg = wordCloudCanvas.toDataURL('image/png', 1.0); } catch(e) {}
+
     setTimeout(() => {
         const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        
-        // Header
-        doc.setFillColor(15, 23, 42); 
-        doc.rect(0, 0, 210, 40, 'F');
-        
-        doc.setFontSize(22);
-        doc.setTextColor(255, 255, 255);
-        doc.text('TrendPulse OS Intelligence', 20, 25);
-        
-        doc.setFontSize(10);
-        doc.setTextColor(148, 163, 184);
-        doc.text('Report Generated: ' + new Date().toLocaleString(), 20, 32);
-        
-        doc.setFontSize(16);
-        doc.setTextColor(15, 23, 42);
-        doc.text('Executive Summary', 20, 60);
-        
-        doc.setFontSize(12);
-        doc.setTextColor(71, 85, 105);
-        const splitText = doc.splitTextToSize(
-            "Based on the latest live intercept data, overall brand sentiment is currently heavily monitored. Critical alerts remain isolated, and automated NLP screening indicates no immediate cascading PR crises outside of selected hashtag sectors. Recommended action: Standard monitoring protocols.",
-            170
-        );
-        doc.text(splitText, 20, 70);
-        
-        // Grab live data from DOM
-        doc.setFontSize(14);
-        doc.setTextColor(59, 130, 246);
-        doc.text('Live Analyzed Posts: ' + document.getElementById('totalPosts').innerText, 20, 110);
-        doc.setTextColor(16, 185, 129);
-        doc.text('Polarity Split Dominance: ' + document.getElementById('avgSentimentLabel').innerText, 20, 120);
-        doc.setTextColor(239, 68, 68);
-        doc.text('Crisis Velocity: ' + document.getElementById('crisisScoreVal').innerText + ' / 100', 20, 130);
+        const doc = new jsPDF('p', 'mm', 'a4');
+        const W = 210, H = 297;
+        const margin = 18;
+        const contentW = W - margin * 2;
 
-        // Footer
+        // Current state snapshot
+        const total = state.posts.length;
+        const counts = { pos: 0, neu: 0, neg: 0 };
+        state.posts.forEach(p => counts[p.sent]++);
+        const posPct = total ? Math.round((counts.pos / total) * 100) : 0;
+        const neuPct = total ? Math.round((counts.neu / total) * 100) : 0;
+        const negPct = total ? Math.round((counts.neg / total) * 100) : 0;
+        const crisisScore = parseInt(document.getElementById('crisisScoreVal').innerText) || 0;
+        const sentimentLabel = document.getElementById('avgSentimentLabel').innerText;
+
+        // Hashtag breakdown
+        const tagCounts = {};
+        const tagSentiment = {};
+        state.posts.forEach(p => {
+            tagCounts[p.tag] = (tagCounts[p.tag] || 0) + 1;
+            if (!tagSentiment[p.tag]) tagSentiment[p.tag] = { pos: 0, neu: 0, neg: 0 };
+            tagSentiment[p.tag][p.sent]++;
+        });
+
+        // Recent trend (last 10 history points)
+        const recentHistory = state.history.slice(-10);
+
+        // Top words
+        const topWords = Object.entries(state.words).sort((a, b) => b[1] - a[1]).slice(0, 15);
+
+        // Recent negative posts
+        const recentNegPosts = state.posts.filter(p => p.sent === 'neg').slice(0, 5);
+
+        // Utility functions
+        const setHeaderBg = () => { doc.setFillColor(15, 23, 42); doc.rect(0, 0, W, 45, 'F'); };
+        const setFooter = (pageNum, totalPages) => {
+            doc.setFillColor(15, 23, 42);
+            doc.rect(0, H - 12, W, 12, 'F');
+            doc.setFontSize(8);
+            doc.setTextColor(148, 163, 184);
+            doc.text('CONFIDENTIAL — TrendPulse Intelligence Report', margin, H - 5);
+            doc.text(`Page ${pageNum} of ${totalPages}`, W - margin - 20, H - 5, { align: 'right' });
+        };
+        const sectionTitle = (title, y) => {
+            doc.setFontSize(14);
+            doc.setTextColor(15, 23, 42);
+            doc.text(title, margin, y);
+            doc.setDrawColor(59, 130, 246);
+            doc.setLineWidth(0.8);
+            doc.line(margin, y + 2, margin + 60, y + 2);
+            return y + 10;
+        };
+        const kpiBox = (x, y, w, h, label, value, color) => {
+            doc.setFillColor(241, 245, 249);
+            doc.roundedRect(x, y, w, h, 3, 3, 'F');
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(x, y, w, h, 3, 3, 'S');
+            doc.setFontSize(8);
+            doc.setTextColor(100, 116, 139);
+            doc.text(label, x + 5, y + 8);
+            doc.setFontSize(18);
+            doc.setTextColor(color[0], color[1], color[2]);
+            doc.text(String(value), x + 5, y + 20);
+        };
+
+        // ==================== PAGE 1: COVER ====================
+        doc.setFillColor(15, 23, 42);
+        doc.rect(0, 0, W, H, 'F');
+
+        // Accent line
+        doc.setFillColor(59, 130, 246);
+        doc.rect(0, 0, W, 4, 'F');
+
+        // Logo area
+        doc.setFontSize(36);
+        doc.setTextColor(255, 255, 255);
+        doc.text('TrendPulse', W / 2, 100, { align: 'center' });
+
+        doc.setFontSize(18);
+        doc.setTextColor(148, 163, 184);
+        doc.text('Intelligence Report', W / 2, 115, { align: 'center' });
+
+        // Divider
+        doc.setDrawColor(59, 130, 246);
+        doc.setLineWidth(0.5);
+        doc.line(W / 2 - 40, 125, W / 2 + 40, 125);
+
+        // Metadata
+        doc.setFontSize(11);
+        doc.setTextColor(100, 116, 139);
+        doc.text('Generated: ' + reportTimeStr, W / 2, 140, { align: 'center' });
+        doc.text('Data Window: Last 200 Intercepted Posts', W / 2, 150, { align: 'center' });
+        doc.text('Classification: INTERNAL — CONFIDENTIAL', W / 2, 160, { align: 'center' });
+
+        // Summary box
+        doc.setFillColor(30, 41, 59);
+        doc.roundedRect(margin, 180, contentW, 50, 5, 5, 'F');
         doc.setFontSize(10);
         doc.setTextColor(148, 163, 184);
-        doc.text('CONFIDENTIAL - INTERNAL USE ONLY. TrendPulse AI Engine Demo.', 20, 280);
-        
-        doc.save('TrendPulse_Intel_Report.pdf');
-        
-        // Revert button
+        doc.text('OVERVIEW SNAPSHOT', margin + 8, 192);
+        doc.setFontSize(12);
+        doc.setTextColor(226, 232, 240);
+        doc.text(`${total} posts analyzed  |  ${posPct}% positive  |  ${negPct}% negative  |  Crisis: ${crisisScore}/100`, margin + 8, 204);
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Active Hashtags: ${Object.keys(tagCounts).join(', ')}`, margin + 8, 214);
+        doc.text(`Sentiment Trend: ${sentimentLabel}`, margin + 8, 222);
+
+        // Bottom accent
+        doc.setFillColor(59, 130, 246);
+        doc.rect(0, H - 4, W, 4, 'F');
+
+        doc.setFontSize(8);
+        doc.setTextColor(71, 85, 105);
+        doc.text('TrendPulse OS v2.0 — Social Media Intelligence Engine', W / 2, H - 15, { align: 'center' });
+
+        // ==================== PAGE 2: EXECUTIVE SUMMARY & KPIs ====================
+        doc.addPage();
+        setHeaderBg();
+        doc.setFontSize(18);
+        doc.setTextColor(255, 255, 255);
+        doc.text('TrendPulse', margin, 20);
+        doc.setFontSize(10);
+        doc.setTextColor(148, 163, 184);
+        doc.text('Intelligence Report — ' + reportTimeShort, margin, 28);
+        setFooter(2, 4);
+
+        let y = sectionTitle('1. Executive Summary', 58);
+
+        doc.setFontSize(10);
+        doc.setTextColor(51, 65, 85);
+
+        let riskLevel = 'LOW';
+        let riskColor = [16, 185, 129];
+        let execSummary = '';
+        if (crisisScore < 40) {
+            riskLevel = 'LOW';
+            riskColor = [16, 185, 129];
+            execSummary = `At ${reportTimeShort}, the brand monitoring environment is stable. Out of ${total} analyzed posts, ${posPct}% carry positive sentiment, indicating healthy brand perception. Negative sentiment remains contained at ${negPct}%. No immediate crisis indicators detected. Standard monitoring protocols are sufficient.`;
+        } else if (crisisScore < 70) {
+            riskLevel = 'MODERATE';
+            riskColor = [245, 158, 11];
+            execSummary = `At ${reportTimeShort}, elevated negative sentiment has been detected. ${negPct}% of ${total} analyzed posts carry negative polarity. The crisis velocity score of ${crisisScore}/100 indicates a potential escalation pattern. Recommended action: increase monitoring frequency and alert the communications team for standby response.`;
+        } else {
+            riskLevel = 'HIGH';
+            riskColor = [239, 68, 68];
+            execSummary = `At ${reportTimeShort}, CRITICAL negative sentiment surge detected. ${negPct}% of ${total} posts are negative with a crisis velocity of ${crisisScore}/100. This pattern suggests a coordinated or viral negative event. Immediate action required: engage crisis response protocol, draft public statement, and identify primary negative influencers.`;
+        }
+
+        const summaryLines = doc.splitTextToSize(execSummary, contentW);
+        doc.text(summaryLines, margin, y);
+        y += summaryLines.length * 5 + 8;
+
+        // Risk badge
+        doc.setFillColor(riskColor[0], riskColor[1], riskColor[2]);
+        doc.roundedRect(margin, y, 30, 8, 2, 2, 'F');
+        doc.setFontSize(8);
+        doc.setTextColor(255, 255, 255);
+        doc.text('RISK: ' + riskLevel, margin + 3, y + 5.5);
+        y += 16;
+
+        // KPI boxes
+        y = sectionTitle('2. Key Performance Indicators', y);
+        const boxW = (contentW - 10) / 3;
+        const boxH = 28;
+        kpiBox(margin, y, boxW, boxH, 'Total Posts Analyzed', total, [59, 130, 246]);
+        kpiBox(margin + boxW + 5, y, boxW, boxH, 'Positive Sentiment', posPct + '%', [16, 185, 129]);
+        kpiBox(margin + (boxW + 5) * 2, y, boxW, boxH, 'Negative Sentiment', negPct + '%', [239, 68, 68]);
+        y += boxH + 8;
+        kpiBox(margin, y, boxW, boxH, 'Neutral Sentiment', neuPct + '%', [100, 116, 139]);
+        kpiBox(margin + boxW + 5, y, boxW, boxH, 'Crisis Velocity', crisisScore + '/100', crisisScore >= 70 ? [239, 68, 68] : crisisScore >= 40 ? [245, 158, 11] : [16, 185, 129]);
+        kpiBox(margin + (boxW + 5) * 2, y, boxW, boxH, 'Active Hashtags', Object.keys(tagCounts).length, [139, 92, 246]);
+        y += boxH + 12;
+
+        // Sentiment distribution bar
+        y = sectionTitle('3. Sentiment Distribution', y);
+        const barTotal = contentW;
+        const posW = (posPct / 100) * barTotal;
+        const neuW = (neuPct / 100) * barTotal;
+        const negW = (negPct / 100) * barTotal;
+
+        doc.setFillColor(16, 185, 129);
+        doc.roundedRect(margin, y, Math.max(posW, 0.5), 10, 2, 2, 'F');
+        doc.setFillColor(100, 116, 139);
+        doc.rect(margin + posW, y, Math.max(neuW, 0.5), 10);
+        doc.setFillColor(239, 68, 68);
+        const negStart = margin + posW + neuW;
+        doc.roundedRect(negStart, y, Math.max(negW, 0.5), 10, 2, 2, 'F');
+
+        // Legend
+        doc.setFontSize(8);
+        doc.setTextColor(16, 185, 129);
+        doc.text(`Pos: ${posPct}%`, margin, y + 18);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Neu: ${neuPct}%`, margin + 40, y + 18);
+        doc.setTextColor(239, 68, 68);
+        doc.text(`Neg: ${negPct}%`, margin + 80, y + 18);
+        y += 26;
+
+        // ==================== PAGE 3: CHARTS ====================
+        doc.addPage();
+        setHeaderBg();
+        doc.setFontSize(18);
+        doc.setTextColor(255, 255, 255);
+        doc.text('TrendPulse', margin, 20);
+        doc.setFontSize(10);
+        doc.setTextColor(148, 163, 184);
+        doc.text('Charts & Visual Analytics — ' + reportTimeShort, margin, 28);
+        setFooter(3, 4);
+
+        y = sectionTitle('4. Sentiment Polarity Split', 58);
+        try {
+            doc.addImage(donutImg, 'PNG', margin + 25, y, 80, 80);
+            // Legend next to chart
+            doc.setFontSize(10);
+            doc.setTextColor(16, 185, 129);
+            doc.text(`Positive: ${counts.pos} posts (${posPct}%)`, margin + 115, y + 25);
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Neutral: ${counts.neu} posts (${neuPct}%)`, margin + 115, y + 38);
+            doc.setTextColor(239, 68, 68);
+            doc.text(`Negative: ${counts.neg} posts (${negPct}%)`, margin + 115, y + 51);
+            doc.setTextColor(51, 65, 85);
+            doc.text(`Total: ${total} posts`, margin + 115, y + 68);
+        } catch(e) {
+            doc.setFontSize(10);
+            doc.setTextColor(239, 68, 68);
+            doc.text('[Chart capture unavailable]', margin, y + 10);
+        }
+        y += 90;
+
+        y = sectionTitle('5. Sentiment Trend Over Time', y);
+        try {
+            doc.addImage(lineImg, 'PNG', margin, y, contentW, 65);
+            y += 70;
+            // Time axis label
+            doc.setFontSize(8);
+            doc.setTextColor(100, 116, 139);
+            if (recentHistory.length > 0) {
+                doc.text(`Time range: ${recentHistory[0].time} — ${recentHistory[recentHistory.length - 1].time}  |  Snapshots every 5 seconds`, margin, y);
+            }
+        } catch(e) {
+            doc.setFontSize(10);
+            doc.setTextColor(239, 68, 68);
+            doc.text('[Chart capture unavailable]', margin, y + 10);
+        }
+        y += 12;
+
+        // Word Cloud
+        if (wordCloudImg && topWords.length > 0) {
+            y = sectionTitle('6. Trending Word Cloud', y);
+            try {
+                doc.addImage(wordCloudImg, 'PNG', margin + 20, y, 120, 60);
+                y += 65;
+                doc.setFontSize(8);
+                doc.setTextColor(100, 116, 139);
+                doc.text('Top keywords extracted from intercepted posts via NLP tokenization.', margin, y);
+            } catch(e) {}
+        }
+
+        // ==================== PAGE 4: DETAILED BREAKDOWNS ====================
+        doc.addPage();
+        setHeaderBg();
+        doc.setFontSize(18);
+        doc.setTextColor(255, 255, 255);
+        doc.text('TrendPulse', margin, 20);
+        doc.setFontSize(10);
+        doc.setTextColor(148, 163, 184);
+        doc.text('Detailed Analysis — ' + reportTimeShort, margin, 28);
+        setFooter(4, 4);
+
+        y = sectionTitle('7. Hashtag Performance Matrix', 58);
+
+        // Table header
+        doc.setFillColor(241, 245, 249);
+        doc.rect(margin, y, contentW, 8, 'F');
+        doc.setFontSize(8);
+        doc.setTextColor(51, 65, 85);
+        doc.text('Hashtag', margin + 3, y + 5.5);
+        doc.text('Total', margin + 45, y + 5.5);
+        doc.text('Positive', margin + 65, y + 5.5);
+        doc.text('Neutral', margin + 90, y + 5.5);
+        doc.text('Negative', margin + 115, y + 5.5);
+        doc.text('Health', margin + 145, y + 5.5);
+        y += 10;
+
+        Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).forEach(([tag, count]) => {
+            const ts = tagSentiment[tag];
+            const health = ts.neg > ts.pos ? 'AT RISK' : ts.neg > ts.neu ? 'WATCH' : 'HEALTHY';
+            const hColor = health === 'AT RISK' ? [239, 68, 68] : health === 'WATCH' ? [245, 158, 11] : [16, 185, 129];
+
+            doc.setFillColor(255, 255, 255);
+            doc.rect(margin, y, contentW, 7, 'F');
+            doc.setDrawColor(226, 232, 240);
+            doc.line(margin, y + 7, margin + contentW, y + 7);
+
+            doc.setFontSize(9);
+            doc.setTextColor(59, 130, 246);
+            doc.text(tag, margin + 3, y + 5);
+            doc.setTextColor(51, 65, 85);
+            doc.text(String(count), margin + 48, y + 5);
+            doc.setTextColor(16, 185, 129);
+            doc.text(String(ts.pos), margin + 68, y + 5);
+            doc.setTextColor(100, 116, 139);
+            doc.text(String(ts.neu), margin + 93, y + 5);
+            doc.setTextColor(239, 68, 68);
+            doc.text(String(ts.neg), margin + 118, y + 5);
+            doc.setTextColor(hColor[0], hColor[1], hColor[2]);
+            doc.setFontSize(7);
+            doc.text(health, margin + 145, y + 5);
+            y += 8;
+        });
+        y += 8;
+
+        // Top Words frequency
+        if (topWords.length > 0) {
+            y = sectionTitle('8. Top Keywords by Frequency', y);
+            doc.setFillColor(241, 245, 249);
+            doc.rect(margin, y, contentW, 8, 'F');
+            doc.setFontSize(8);
+            doc.setTextColor(51, 65, 85);
+            doc.text('#', margin + 3, y + 5.5);
+            doc.text('Keyword', margin + 12, y + 5.5);
+            doc.text('Frequency', margin + 70, y + 5.5);
+            doc.text('Weight', margin + 110, y + 5.5);
+            y += 10;
+
+            topWords.forEach(([word, freq], i) => {
+                const barWidth = Math.min((freq / (topWords[0][1] || 1)) * 60, 60);
+                doc.setFillColor(241, 245, 249);
+                doc.rect(margin, y, contentW, 6, 'F');
+                doc.setFontSize(8);
+                doc.setTextColor(100, 116, 139);
+                doc.text(String(i + 1), margin + 3, y + 4.5);
+                doc.setTextColor(51, 65, 85);
+                doc.text(word, margin + 12, y + 4.5);
+                doc.setTextColor(59, 130, 246);
+                doc.text(String(freq), margin + 73, y + 4.5);
+                // Mini bar
+                doc.setFillColor(59, 130, 246);
+                doc.roundedRect(margin + 100, y + 1, barWidth, 4, 1, 1, 'F');
+                y += 7;
+            });
+            y += 8;
+        }
+
+        // Recent Negative Posts
+        if (recentNegPosts.length > 0) {
+            y = sectionTitle('9. Recent Negative Intercept Feed', y);
+            recentNegPosts.forEach((post, i) => {
+                const postTime = post.ts ? new Date(post.ts).toLocaleTimeString('en-US', { hour12: false }) : reportTimeShort;
+                doc.setFillColor(254, 242, 242);
+                doc.roundedRect(margin, y, contentW, 16, 2, 2, 'F');
+                doc.setDrawColor(239, 68, 68);
+                doc.setLineWidth(0.3);
+                doc.line(margin, y, margin, y + 16);
+
+                doc.setFontSize(7);
+                doc.setTextColor(239, 68, 68);
+                doc.text('NEGATIVE  •  ' + post.tag + '  •  ' + postTime, margin + 4, y + 5);
+                doc.setFontSize(8);
+                doc.setTextColor(51, 65, 85);
+                const postLines = doc.splitTextToSize(post.text, contentW - 10);
+                doc.text(postLines[0] || '', margin + 4, y + 12);
+                y += 19;
+            });
+        }
+
+        // ==================== PAGE 5: TIMELINE & RECOMMENDATIONS ====================
+        doc.addPage();
+        setHeaderBg();
+        doc.setFontSize(18);
+        doc.setTextColor(255, 255, 255);
+        doc.text('TrendPulse', margin, 20);
+        doc.setFontSize(10);
+        doc.setTextColor(148, 163, 184);
+        doc.text('Timeline & Recommendations — ' + reportTimeShort, margin, 28);
+        setFooter(5, 5);
+
+        y = sectionTitle('10. Sentiment Timeline (Recent Snapshots)', 58);
+
+        if (recentHistory.length > 0) {
+            // Table
+            doc.setFillColor(241, 245, 249);
+            doc.rect(margin, y, contentW, 8, 'F');
+            doc.setFontSize(8);
+            doc.setTextColor(51, 65, 85);
+            doc.text('Timestamp', margin + 3, y + 5.5);
+            doc.text('Positive', margin + 50, y + 5.5);
+            doc.text('Negative', margin + 90, y + 5.5);
+            doc.text('Trend', margin + 130, y + 5.5);
+            y += 10;
+
+            recentHistory.forEach((h, i) => {
+                const trend = h.pos > h.neg ? '▲ Positive' : h.neg > h.pos ? '▼ Negative' : '— Neutral';
+                const tColor = h.pos > h.neg ? [16, 185, 129] : h.neg > h.pos ? [239, 68, 68] : [100, 116, 139];
+
+                doc.setFillColor(i % 2 === 0 ? 255 : 248, i % 2 === 0 ? 255 : 250, i % 2 === 0 ? 255 : 250);
+                doc.rect(margin, y, contentW, 7, 'F');
+
+                doc.setFontSize(8);
+                doc.setTextColor(100, 116, 139);
+                doc.text(h.time, margin + 3, y + 5);
+                doc.setTextColor(16, 185, 129);
+                doc.text(String(h.pos), margin + 53, y + 5);
+                doc.setTextColor(239, 68, 68);
+                doc.text(String(h.neg), margin + 93, y + 5);
+                doc.setTextColor(tColor[0], tColor[1], tColor[2]);
+                doc.text(trend, margin + 130, y + 5);
+                y += 8;
+            });
+            y += 8;
+        }
+
+        // Recommendations
+        y = sectionTitle('11. Recommended Actions', y);
+
+        let recommendations = [];
+        if (crisisScore < 40) {
+            recommendations = [
+                { icon: 'OK', text: 'Continue standard monitoring at current intervals.' },
+                { icon: 'INFO', text: 'Schedule periodic deep-dive sentiment analysis reports.' },
+                { icon: 'TIP', text: `Focus engagement efforts on high-performing hashtags: ${Object.keys(tagCounts).join(', ')}.` },
+                { icon: 'NOTE', text: 'Maintain automated alert thresholds at current levels.' }
+            ];
+        } else if (crisisScore < 70) {
+            recommendations = [
+                { icon: 'WARN', text: 'Increase monitoring frequency to real-time scanning.' },
+                { icon: 'ALERT', text: 'Notify communications team for potential response preparation.' },
+                { icon: 'INFO', text: 'Identify and track source accounts driving negative sentiment.' },
+                { icon: 'TIP', text: 'Prepare holding statement for rapid deployment if escalation occurs.' }
+            ];
+        } else {
+            recommendations = [
+                { icon: 'CRIT', text: 'ACTIVATE crisis response protocol immediately.' },
+                { icon: 'URGENT', text: 'Draft and issue public statement addressing concerns.' },
+                { icon: 'ALERT', text: 'Engage directly with high-influence negative commentators.' },
+                { icon: 'WARN', text: 'Monitor for coordinated inauthentic behavior patterns.' }
+            ];
+        }
+
+        recommendations.forEach(rec => {
+            const recColor = rec.icon === 'OK' ? [16, 185, 129] :
+                           rec.icon === 'WARN' || rec.icon === 'ALERT' ? [245, 158, 11] :
+                           rec.icon === 'CRIT' || rec.icon === 'URGENT' ? [239, 68, 68] : [59, 130, 246];
+
+            doc.setFillColor(recColor[0], recColor[1], recColor[2]);
+            doc.roundedRect(margin, y, 18, 7, 2, 2, 'F');
+            doc.setFontSize(6);
+            doc.setTextColor(255, 255, 255);
+            doc.text(rec.icon, margin + 2, y + 5);
+
+            doc.setFontSize(9);
+            doc.setTextColor(51, 65, 85);
+            const recLines = doc.splitTextToSize(rec.text, contentW - 25);
+            doc.text(recLines, margin + 22, y + 5);
+            y += Math.max(10, recLines.length * 5 + 4);
+        });
+
+        y += 10;
+
+        // Report signature
+        doc.setDrawColor(226, 232, 240);
+        doc.setLineWidth(0.5);
+        doc.line(margin, y, margin + contentW, y);
+        y += 8;
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139);
+        doc.text('This report was automatically generated by the TrendPulse Intelligence Engine.', margin, y);
+        y += 5;
+        doc.text(`Report ID: TP-${reportTimestamp.getTime().toString(36).toUpperCase()}  |  Engine: TrendPulse OS v2.0  |  Generated: ${reportTimeStr}`, margin, y);
+
+        // Save
+        doc.save('TrendPulse_Intel_Report_' + reportTimestamp.toISOString().slice(0, 10) + '.pdf');
+
         btn.innerHTML = originalText;
-    }, 1800); // UI delay for dramatic effect
+    }, 2500);
 };

@@ -1,8 +1,8 @@
 const fs = require('fs');
 
 const pngHtml = `
-<img src="/logo-light.png" class="w-4/5 h-4/5 object-contain dark:hidden relative z-10" alt="Logo">
-<img src="/logo-dark.png" class="w-4/5 h-4/5 object-contain hidden dark:block relative z-10" alt="Logo">
+<img src="/light.jpeg" class="w-4/5 h-4/5 object-contain dark:hidden relative z-10" alt="Logo">
+<img src="/dark.jpeg" class="w-4/5 h-4/5 object-contain hidden dark:block relative z-10" alt="Logo">
 `;
 
 const htmlFiles = fs.readdirSync('public').filter(f => f.endsWith('.html'));
