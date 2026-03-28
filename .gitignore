@@ -4,6 +4,7 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+trendpulse/
 
 # Python backend artifacts
 __pycache__/
