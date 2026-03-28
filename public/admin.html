@@ -62,13 +62,14 @@
     <!-- Top Nav Health Banner -->
     <header class="bg-slate-900/80 backdrop-blur-lg border-b border-slate-800 p-4 sticky top-0 z-50 shadow-md">
         <div class="max-w-7xl mx-auto flex justify-between items-center px-4">
-            <h1 class="font-bold text-xl text-white flex items-center gap-3">
-                <div class="w-8 h-8 rounded bg-transparent flex items-center justify-center shadow-lg">
-<img src="/logo-light.png" class="w-4/5 h-4/5 object-contain dark:hidden relative z-10" alt="Logo">
-<img src="/logo-dark.png" class="w-4/5 h-4/5 object-contain hidden dark:block relative z-10" alt="Logo">
-</div>
-                Admin Core
-            </h1>
+            <div class="flex items-center gap-3">
+                <div class="flex flex-col items-center">
+                    <img src="/light.jpeg" class="h-10 w-auto dark:hidden drop-shadow-sm" alt="TrendPulse">
+                    <img src="/dark.jpeg" class="h-10 w-auto hidden dark:block drop-shadow-lg" alt="TrendPulse">
+                    <span class="text-[10px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400 mt-0.5">TrendPulse</span>
+                </div>
+                <span class="text-xl font-bold text-red-500 tracking-tight mt-1 border-l-2 border-red-500/30 pl-4">Admin Core</span>
+            </div>
             <div id="healthBanner" class="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-sm font-medium transition-colors">
                 <div class="w-2 h-2 rounded-full bg-slate-500 animate-pulse" id="healthDot"></div>
                 <span id="healthText" class="text-slate-400">Verifying System...</span>
