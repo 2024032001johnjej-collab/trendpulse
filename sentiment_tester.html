@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TrendPulse Sentiment Tester</title>
+    <style>
+      :root {
+        --bg: #f3f8f5;
+        --card: #ffffff;
+        --text: #15221b;
+        --muted: #4c5f54;
+        --accent: #0c7a43;
+        --danger: #b02222;
+        --neutral: #6c7670;
+      }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: radial-gradient(circle at 80% 20%, #d6f2e2 0%, var(--bg) 45%);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 900px;
+        margin: 40px auto;
+        background: var(--card);
+        border-radius: 14px;
+        box-shadow: 0 14px 35px rgba(0, 0, 0, 0.08);
+        padding: 24px;
+      }
+      h1 {
+        margin-top: 0;
+        margin-bottom: 8px;
+      }
+      p {
+        color: var(--muted);
+      }
+      textarea {
+        width: 100%;
+        min-height: 120px;
+        border: 1px solid #cad6ce;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 15px;
+        resize: vertical;
+        box-sizing: border-box;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+      }
+      select,
+      button {
+        border-radius: 8px;
+        border: 1px solid #cad6ce;
+        padding: 10px 14px;
+        font-size: 14px;
+      }
+      button {
+        background: var(--accent);
+        color: white;
+        border: none;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .result {
+        margin-top: 18px;
+        border: 1px solid #e4ece7;
+        border-radius: 10px;
+        padding: 14px;
+        background: #fbfdfc;
+      }
+      .pill {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 4px 10px;
+        color: #fff;
+        font-size: 12px;
+        margin-right: 8px;
+      }
+      .positive { background: var(--accent); }
+      .negative { background: var(--danger); }
+      .neutral { background: var(--neutral); }
+      pre {
+        background: #0b1f14;
+        color: #d4f7df;
+        border-radius: 10px;
+        padding: 12px;
+        overflow: auto;
+      }
+      @media (max-width: 640px) {
+        .wrap {
+          margin: 18px;
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>TrendPulse Sentiment Tester</h1>
+      <p>Test your backend model quickly. This calls /api/analyze directly.</p>
+
+      <textarea id="textInput" placeholder="Type a comment here...">I absolutely love this feature, great job by the team!</textarea>
+
+      <div class="row">
+        <select id="engineSelect">
+          <option value="bert" selected>ML Model (bert)</option>
+          <option value="both">Hybrid (both)</option>
+          <option value="vader">VADER (vader)</option>
+        </select>
+        <button id="analyzeBtn">Analyze</button>
+      </div>
+
+      <div class="result" id="resultCard" style="display: none">
+        <div id="summary"></div>
+        <pre id="raw"></pre>
+      </div>
+    </div>
+
+    <script>
+      const textInput = document.getElementById("textInput");
+      const engineSelect = document.getElementById("engineSelect");
+      const analyzeBtn = document.getElementById("analyzeBtn");
+      const resultCard = document.getElementById("resultCard");
+      const summary = document.getElementById("summary");
+      const raw = document.getElementById("raw");
+
+      async function analyze() {
+        const text = textInput.value.trim();
+        const engine = engineSelect.value;
+        if (!text) {
+          alert("Please enter a comment first.");
+          return;
+        }
+
+        analyzeBtn.disabled = true;
+        analyzeBtn.textContent = "Analyzing...";
+
+        try {
+          const res = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, engine })
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(data.error || "Request failed");
+          }
+
+          const label = (data.label || "neutral").toLowerCase();
+          summary.innerHTML =
+            '<span class="pill ' + label + '">' + label.toUpperCase() + '</span>' +
+            'Confidence: <strong>' + data.confidence + '</strong> | ' +
+            'Engine: <strong>' + data.engine + '</strong> | ' +
+            'Time: <strong>' + data.processing_ms + ' ms</strong>';
+
+          raw.textContent = JSON.stringify(data, null, 2);
+          resultCard.style.display = "block";
+        } catch (err) {
+          summary.innerHTML = '<span class="pill negative">ERROR</span> ' + err.message;
+          raw.textContent = "";
+          resultCard.style.display = "block";
+        } finally {
+          analyzeBtn.disabled = false;
+          analyzeBtn.textContent = "Analyze";
+        }
+      }
+
+      analyzeBtn.addEventListener("click", analyze);
+    </script>
+  </body>
+</html>
