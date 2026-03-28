@@ -4,6 +4,9 @@ const logoutBtn = document.getElementById('logoutBtn');
 const triggerSpikeBtn = document.getElementById('triggerSpikeBtn');
 const hashtagFilter = document.getElementById('hashtagFilter');
 
+// ⭐ FLASK BACKEND CONNECTION
+const API_BASE = 'http://localhost:5000';
+
 const token = localStorage.getItem('token');
 const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
@@ -11,7 +14,7 @@ if (!token && !isAdmin) {
   window.location.href = '/login.html';
 }
 
-// Authentication / Profile Load Mock
+// Authentication / Profile Load - Connect to Flask Backend
 async function loadProfile() {
     if (isAdmin) {
         userNameEl.textContent = 'Administrator';
@@ -19,14 +22,14 @@ async function loadProfile() {
         return;
     }
     try {
-        const response = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+        const response = await fetch(`${API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
         const data = await response.json();
         if (!response.ok) {
             localStorage.removeItem('token');
             window.location.href = '/login.html';
             return;
         }
-        userNameEl.textContent = data.user.name;
+        userNameEl.textContent = data.user?.name || 'User';
     } catch (error) {
         userNameEl.textContent = 'User (Offline)';
     }
@@ -40,18 +43,58 @@ logoutBtn.addEventListener('click', () => {
 });
 
 /* =========================================
-   DASHBOARD SIMULATION LOGIC 
+   DASHBOARD BACKEND POLLING LOGIC 
    ========================================= */
 
-// State
+// State - fetched from Flask backend
 let state = {
     posts: [],
     counts: { positive: 0, neutral: 0, negative: 0 },
-    history: [], // for line chart
-    words: {}, // for word cloud
+    crisisScore: 0,
+    crisisStatus: 'Safe',
+    words: {},
+    hourly: []
 };
 
 let currentFilter = 'all';
+
+// ⭐ FLASK BACKEND POLLING FUNCTIONS
+async function pollFlaskBackend() {
+    try {
+        const [statsRes, crisisRes, postsRes, wordcloudRes] = await Promise.all([
+            fetch(`${API_BASE}/api/stats?hours=24`).catch(e => ({ json: () => ({}) })),
+            fetch(`${API_BASE}/api/crisis-score`).catch(e => ({ json: () => ({}) })),
+            fetch(`${API_BASE}/api/posts?limit=60`).catch(e => ({ json: () => ({}) })),
+            fetch(`${API_BASE}/api/wordcloud?limit=80`).catch(e => ({ json: () => ({}) }))
+        ]);
+
+        const statsData = await statsRes.json();
+        const crisisData = await crisisRes.json();
+        const postsData = await postsRes.json();
+        const wordcloudData = await wordcloudRes.json();
+
+        // Update state from Flask backend
+        state.counts = {
+            positive: statsData.positive || 0,
+            neutral: statsData.neutral || 0,
+            negative: statsData.negative || 0
+        };
+        state.crisisScore = crisisData.score || 0;
+        state.crisisStatus = crisisData.status || 'Safe';
+        state.posts = Array.isArray(postsData.posts) ? postsData.posts : [];
+        state.hourly = Array.isArray(statsData.hourly) ? statsData.hourly : [];
+        
+        // Convert wordcloud data to word frequency object
+        if (Array.isArray(wordcloudData.words)) {
+            state.words = {};
+            wordcloudData.words.forEach(item => {
+                state.words[item.word] = item.count;
+            });
+        }
+    } catch (error) {
+        console.error('Error polling Flask backend:', error);
+    }
+}
 
 // Templates
 const positiveTemplates = [
@@ -164,17 +207,25 @@ function renderWordCloud() {
 
 function updateUI() {
     // Filter posts
-    const filtered = currentFilter === 'all' ? state.posts : state.posts.filter(p => p.tag === currentFilter);
+    const filtered = currentFilter === 'all' ? state.posts : state.posts.filter(p => p.tag === currentFilter || p.hashtags?.includes(currentFilter));
     const fCounts = { pos: 0, neu: 0, neg: 0 };
-    filtered.forEach(p => { fCounts[p.sent]++; });
+    filtered.forEach(p => { 
+        const sent = typeof p.sentiment === 'string' ? p.sentiment.toLowerCase() : 'neu';
+        if (sent === 'positive') fCounts.pos++;
+        else if (sent === 'negative') fCounts.neg++;
+        else fCounts.neu++;
+    });
+
+    // Use Flask-provided counts if available
+    const displayCounts = filtered.length > 0 ? fCounts : state.counts;
 
     // 1. KPI Cards
-    const total = filtered.length;
+    const total = filtered.length || (state.counts.positive + state.counts.neutral + state.counts.negative);
     document.getElementById('totalPosts').textContent = total;
     
     // Average Sentiment Bar
-    const posPct = total ? Math.round((fCounts.pos / total) * 100) : 0;
-    const negPct = total ? Math.round((fCounts.neg / total) * 100) : 0;
+    const posPct = total ? Math.round((displayCounts.pos / total) * 100) : 0;
+    const negPct = total ? Math.round((displayCounts.neg / total) * 100) : 0;
     document.getElementById('donutCenterPct').textContent = posPct + '%';
     
     let avgLabel = 'Neutral';
@@ -188,13 +239,8 @@ function updateUI() {
     bar.className = 'h-1.5 rounded-full transition-all duration-1000 ' + barColor;
     bar.style.width = w + '%';
 
-    // 2. Crisis Score (Exponential based on recent negative velocity)
-    // Get last 20 posts for velocity
-    const recent = filtered.slice(0, 30);
-    const recentNeg = recent.filter(p => p.sent === 'neg').length;
-    let crisisScore = total === 0 ? 0 : Math.min(100, Math.round((recentNeg / Math.max(1, recent.length)) * 160));
-    
-    // Animate score
+    // 2. Crisis Score (from Flask backend)
+    const crisisScore = state.crisisScore || 0;
     const scoreEl = document.getElementById('crisisScoreVal');
     const badge = document.getElementById('crisisBadge');
     const action = document.getElementById('actionRecommendation');
@@ -223,14 +269,15 @@ function updateUI() {
     }
 
     // 3. Update Charts
-    donutChart.data.datasets[0].data = [fCounts.pos, fCounts.neu, fCounts.neg];
+    donutChart.data.datasets[0].data = [displayCounts.pos || state.counts.positive, displayCounts.neu || state.counts.neutral, displayCounts.neg || state.counts.negative];
     donutChart.update();
 
-    // Time series
-    if(state.history.length > 20) state.history.shift();
-    lineChart.data.labels = state.history.map(h => h.time);
-    lineChart.data.datasets[0].data = state.history.map(h => h.pos);
-    lineChart.data.datasets[1].data = state.history.map(h => h.neg);
+    // Time series from Flask hourly data
+    if (Array.isArray(state.hourly) && state.hourly.length > 0) {
+        lineChart.data.labels = state.hourly.map(h => h.hour?.slice(11, 16) || h.hour);
+        lineChart.data.datasets[0].data = state.hourly.map(h => h.positive || 0);
+        lineChart.data.datasets[1].data = state.hourly.map(h => h.negative || 0);
+    }
     lineChart.update();
 
     renderWordCloud();
@@ -364,38 +411,48 @@ hashtagFilter.addEventListener('change', (e) => {
 });
 
 let isSpiking = false;
-triggerSpikeBtn.addEventListener('click', () => {
+triggerSpikeBtn.addEventListener('click', async () => {
     if(isSpiking) return;
     isSpiking = true;
     triggerSpikeBtn.innerHTML = 'Injecting Spike <span class="flex h-2 w-2 relative ml-1"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span></span>';
     triggerSpikeBtn.classList.replace('bg-slate-800/80', 'bg-red-600');
     triggerSpikeBtn.classList.replace('text-slate-300', 'text-white');
     
-    let count = 0;
-    const spikeInt = setInterval(() => {
-        generatePost(true); // force negative
+    try {
+        // Call Flask spike endpoint
+        await fetch(`${API_BASE}/api/posts/spike`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: 20 })
+        });
+        
+        // Wait a bit for data to be populated, then refresh
+        await new Promise(r => setTimeout(r, 1500));
+        await pollFlaskBackend();
         updateUI();
-        count++;
-        if(count >= 20) {
-            clearInterval(spikeInt);
-            isSpiking = false;
-            triggerSpikeBtn.innerHTML = '<svg class="w-3.5 h-3.5 group-hover:text-red-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> Simulate Crisis Spike';
-            triggerSpikeBtn.classList.replace('bg-red-600', 'bg-slate-800/80');
-            triggerSpikeBtn.classList.replace('text-white', 'text-slate-300');
-        }
-    }, 400); // rapidly fire 20 negatives
+    } catch (error) {
+        console.error('Spike injection error:', error);
+    } finally {
+        isSpiking = false;
+        triggerSpikeBtn.innerHTML = '<svg class="w-3.5 h-3.5 group-hover:text-red-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> Simulate Crisis Spike';
+        triggerSpikeBtn.classList.replace('bg-red-600', 'bg-slate-800/80');
+        triggerSpikeBtn.classList.replace('text-white', 'text-slate-300');
+    }
 });
 
 // Init
 window.addEventListener('DOMContentLoaded', () => {
     initCharts();
     updateClock();
-    state.history.push({ time: new Date().toLocaleTimeString('en-US',{hour12:false}), pos: 0, neg: 0 });
     
-    // Pre-populate 10 items
-    for(let i=0; i<10; i++) generatePost();
-    updateUI();
-    startLoop();
+    // Initial poll from Flask backend
+    pollFlaskBackend().then(() => updateUI());
+    
+    // Start continuous polling from Flask backend (every 2 seconds)
+    setInterval(async () => {
+        await pollFlaskBackend();
+        updateUI();
+    }, 2000);
 
     // Check saved theme at init and update charts if needed
     if(localStorage.getItem('theme') === 'light' && window.updateChartsTheme) {
