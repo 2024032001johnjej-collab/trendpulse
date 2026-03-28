@@ -2,6 +2,7 @@ from flask import Flask
 from flask_pymongo import PyMongo
 from flask_bcrypt import Bcrypt
 from flask_login import LoginManager
+from flask_cors import CORS
 from dotenv import load_dotenv
 import os
 
@@ -15,6 +16,7 @@ login_manager = LoginManager()
 
 def create_app():
     app = Flask(__name__, template_folder="../frontend/templates", static_folder="../frontend/static")
+    CORS(app)
 
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "trendpulse-dev-key")
     app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/trendpulse")
