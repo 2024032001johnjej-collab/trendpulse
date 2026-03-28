@@ -4,3 +4,17 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# Python backend artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# Local Office extraction artifacts
+_document.xml
+_document_text.txt
+_word_comments.xml.txt
+_word_footnotes.xml.txt
