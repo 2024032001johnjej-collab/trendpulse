@@ -1,0 +1,55 @@
+{
+  "single_requests": [
+    {
+      "name": "Positive",
+      "endpoint": "/api/analyze",
+      "method": "POST",
+      "body": {
+        "text": "I absolutely love this feature, great job by the team!",
+        "engine": "bert"
+      }
+    },
+    {
+      "name": "Negative",
+      "endpoint": "/api/analyze",
+      "method": "POST",
+      "body": {
+        "text": "This update is terrible and full of bugs.",
+        "engine": "bert"
+      }
+    },
+    {
+      "name": "Neutral",
+      "endpoint": "/api/analyze",
+      "method": "POST",
+      "body": {
+        "text": "The workshop starts at 10 AM and ends at 1 PM.",
+        "engine": "bert"
+      }
+    },
+    {
+      "name": "Hybrid Example",
+      "endpoint": "/api/analyze",
+      "method": "POST",
+      "body": {
+        "text": "The new release is okay, nothing special so far.",
+        "engine": "both"
+      }
+    }
+  ],
+  "batch_request": {
+    "name": "Batch Mixed Comments",
+    "endpoint": "/api/analyze/batch",
+    "method": "POST",
+    "body": {
+      "texts": [
+        "Amazing speaker session today, really inspiring.",
+        "Customer support was slow and unhelpful.",
+        "The meeting room has changed to Hall B.",
+        "I am impressed with the speed improvements.",
+        "This is the worst UI update I have seen."
+      ],
+      "engine": "bert"
+    }
+  }
+}
