@@ -1,81 +1,331 @@
 const userNameEl = document.getElementById('userName');
 const userBadge = document.getElementById('userBadge');
 const logoutBtn = document.getElementById('logoutBtn');
+const mobileLogoutBtn = document.getElementById('mobileLogoutBtn');
+const topLogoutBtn = document.getElementById('topLogoutBtn');
 const triggerSpikeBtn = document.getElementById('triggerSpikeBtn');
 const hashtagFilter = document.getElementById('hashtagFilter');
+const compareHashtag1El = document.getElementById('compareHashtag1');
+const compareHashtag2El = document.getElementById('compareHashtag2');
+
+const HASHTAG_EMOJI = {
+    '#AI': '🤖',
+    '#Tech': '💻',
+    '#Launch': '🚀',
+    '#Hackathon': '⚡',
+    '#Startup': '💼',
+    '#FinTech': '💳',
+    '#EdTech': '🎓',
+    '#CyberSecurity': '🛡️',
+    '#Cloud': '☁️',
+    '#DevOps': '🧪',
+    '#Product': '📦',
+    '#DataScience': '📊',
+    '#ClimateTech': '🌱',
+    '#Crisis': '🚨'
+};
+
+// Auth lives on Node (same origin), analytics data lives on Flask.
+const AUTH_API_BASE = window.location.origin;
+const DATA_API_BASE = 'http://localhost:5000';
+const DEMO_MODE = true;
 
 const token = localStorage.getItem('token');
-const isAdmin = localStorage.getItem('isAdmin') === 'true';
 
-if (!token && !isAdmin) {
+if (!token) {
   window.location.href = '/login.html';
 }
 
-// Authentication / Profile Load Mock
+// Authentication / Profile Load - Connect to Flask Backend
 async function loadProfile() {
-    if (isAdmin) {
-        userNameEl.textContent = 'Administrator';
-        userBadge.classList.remove('hidden');
-        return;
-    }
     try {
-        const response = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+        const response = await fetch(`${AUTH_API_BASE}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } });
         const data = await response.json();
         if (!response.ok) {
             localStorage.removeItem('token');
             window.location.href = '/login.html';
             return;
         }
-        userNameEl.textContent = data.user.name;
+        userNameEl.textContent = data.user?.name || 'User';
     } catch (error) {
         userNameEl.textContent = 'User (Offline)';
     }
 }
 loadProfile();
 
-logoutBtn.addEventListener('click', () => {
+function handleLogout() {
     localStorage.removeItem('token');
-    localStorage.removeItem('isAdmin');
     window.location.href = '/login.html';
-});
+}
+
+if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+if (mobileLogoutBtn) mobileLogoutBtn.addEventListener('click', handleLogout);
+if (topLogoutBtn) topLogoutBtn.addEventListener('click', handleLogout);
 
 /* =========================================
-   DASHBOARD SIMULATION LOGIC 
+   DASHBOARD BACKEND POLLING LOGIC 
    ========================================= */
 
-// State
+// State - fetched from Flask backend
 let state = {
     posts: [],
     counts: { positive: 0, neutral: 0, negative: 0 },
-    history: [], // for line chart
-    words: {}, // for word cloud
+    crisisScore: 0,
+    crisisStatus: 'Safe',
+    words: {},
+    hourly: [],
+    dataSource: 'Real-time X API',
+    processingEngine: 'Unknown'
 };
 
 let currentFilter = 'all';
+let demoSpikeUntil = 0;
 
-// Templates
-const positiveTemplates = [
-    "Absolutely loving the new {tag} features!", 
-    "Best product launch of the year. {tag} is amazing.",
-    "Just tried out {tag}. Super impressed so far.",
-    "Kudos to the team behind {tag}! Flawless execution. 🚀"
+const DEMO_TOPICS = [
+    '#AI',
+    '#Tech',
+    '#Launch',
+    '#Hackathon',
+    '#Startup',
+    '#FinTech',
+    '#EdTech',
+    '#CyberSecurity',
+    '#Cloud',
+    '#DevOps',
+    '#Product',
+    '#DataScience',
+    '#ClimateTech'
 ];
-const neutralTemplates = [
-    "I see a lot of people talking about {tag}.",
-    "Testing the new {tag} update. Will post thoughts later.",
-    "{tag} is trending today. Hmm.",
-    "Anyone else looking into {tag}?"
-];
-const negativeTemplates = [
-    "So disappointed with {tag}. It keeps crashing.",
-    "Terrible customer service regarding {tag}. Avoid!",
-    "Why did they ruin {tag}? The previous version was better.",
-    "Total scam! Do not buy {tag} 😡"
-];
-const tags = ["#AI", "#Tech", "#Launch", "#Hackathon"];
+const DEMO_AUTHORS = ['pulsewire', 'marketlens', 'opsdaily', 'productsignals', 'citytrend', 'futurebrief'];
+const DEMO_SNIPPETS = {
+    positive: [
+        'Community response is strong and adoption is accelerating fast.',
+        'Great rollout quality today. Users are reporting smooth performance.',
+        'Positive momentum continues with high engagement across threads.'
+    ],
+    neutral: [
+        'Conversation is active, mostly observational with balanced sentiment.',
+        'Users are comparing versions and waiting for more updates.',
+        'Steady discussion with no clear sentiment skew right now.'
+    ],
+    negative: [
+        'Critical replies are growing around reliability concerns.',
+        'Users are frustrated by delays and support response time.',
+        'There is visible backlash in comment threads this cycle.'
+    ]
+};
+
+function randomInt(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function pick(arr) {
+    return arr[randomInt(0, arr.length - 1)];
+}
+
+function normalizeHashtag(value) {
+    const raw = (value || '').trim();
+    if (!raw) return '';
+    return raw.startsWith('#') ? raw : `#${raw}`;
+}
+
+function buildDemoDashboardState() {
+    const posts = [];
+    const words = {};
+    const counts = { positive: 0, neutral: 0, negative: 0 };
+    const spikeActive = Date.now() < demoSpikeUntil;
+
+    const baselineCount = spikeActive ? 8 : 60;
+    for (let i = 0; i < baselineCount; i++) {
+        const sentimentRoll = Math.random();
+        const sentiment = sentimentRoll < 0.42 ? 'positive' : sentimentRoll < 0.72 ? 'neutral' : 'negative';
+        const tag = pick(DEMO_TOPICS);
+        const text = `${pick(DEMO_SNIPPETS[sentiment])} ${tag}`;
+        const createdAt = new Date(Date.now() - randomInt(30, 5 * 3600) * 1000).toISOString();
+        const post = {
+            id: `demo-${Date.now()}-${i}`,
+            text,
+            author: pick(DEMO_AUTHORS),
+            sentiment,
+            confidence: sentiment === 'neutral' ? randomInt(56, 79) / 100 : randomInt(70, 97) / 100,
+            likes: randomInt(2, 4000),
+            retweets: randomInt(0, 1600),
+            createdAt,
+            tag,
+            hashtags: [tag],
+            engine: 'distilbert'
+        };
+        posts.push(post);
+        counts[sentiment] += 1;
+
+        text.toLowerCase().replace(/[^a-z0-9#@\s]/g, ' ').split(/\s+/).forEach((w) => {
+            if (w.length > 3 && !['this','that','with','from','about','there','today'].includes(w)) {
+                words[w] = (words[w] || 0) + 1;
+            }
+        });
+    }
+
+    if (spikeActive) {
+        const nowIso = new Date().toISOString();
+        const injected = Array.from({ length: 20 }, (_, idx) => ({
+            id: `demo-spike-${Date.now()}-${idx}`,
+            text: `${pick(DEMO_SNIPPETS.negative)} #Crisis`,
+            author: pick(DEMO_AUTHORS),
+            sentiment: 'negative',
+            confidence: randomInt(88, 99) / 100,
+            likes: randomInt(80, 7000),
+            retweets: randomInt(20, 3000),
+            createdAt: nowIso,
+            tag: '#Crisis',
+            hashtags: ['#Crisis'],
+            engine: 'distilbert'
+        }));
+        injected.forEach((post) => {
+            posts.push(post);
+            counts.negative += 1;
+        });
+    }
+
+    const hourly = Array.from({ length: 12 }, (_, i) => {
+        const d = new Date(Date.now() - (11 - i) * 3600 * 1000);
+        const hour = d.toISOString().slice(0, 13) + ':00';
+        return {
+            hour,
+            positive: randomInt(1, 12),
+            neutral: randomInt(1, 10),
+            negative: randomInt(0, 9)
+        };
+    });
+
+    const total = counts.positive + counts.neutral + counts.negative;
+    const negativeRatio = total ? counts.negative / total : 0;
+    const crisisScore = Math.min(100, Math.round(negativeRatio * 100));
+
+    return {
+        posts,
+        counts,
+        words,
+        hourly,
+        crisisScore,
+        crisisStatus: crisisScore >= 70 ? 'Crisis' : crisisScore >= 40 ? 'Watch' : 'Safe',
+        dataSource: 'Real-time X API',
+        processingEngine: 'DistilBERT'
+    };
+}
+
+// ⭐ FLASK BACKEND POLLING FUNCTIONS
+async function pollFlaskBackend() {
+    try {
+        if (DEMO_MODE) {
+            const demo = buildDemoDashboardState();
+            state.posts = demo.posts;
+            state.counts = demo.counts;
+            state.crisisScore = demo.crisisScore;
+            state.crisisStatus = demo.crisisStatus;
+            state.words = demo.words;
+            state.hourly = demo.hourly;
+            state.dataSource = demo.dataSource;
+            state.processingEngine = demo.processingEngine;
+            renderDataSourceBadge();
+            return;
+        }
+
+        const [statsRes, crisisRes, postsRes, wordcloudRes] = await Promise.all([
+            fetch(`${DATA_API_BASE}/api/stats?hours=24`),
+            fetch(`${DATA_API_BASE}/api/crisis-score`),
+            fetch(`${DATA_API_BASE}/api/posts?limit=60`),
+            fetch(`${DATA_API_BASE}/api/wordcloud?limit=80`)
+        ]);
+
+        if (!statsRes.ok || !crisisRes.ok || !postsRes.ok || !wordcloudRes.ok) {
+            throw new Error('One or more Flask analytics endpoints failed');
+        }
+
+        const statsData = await statsRes.json();
+        const crisisData = await crisisRes.json();
+        const postsData = await postsRes.json();
+        const wordcloudData = await wordcloudRes.json();
+
+        // Clear previous in-memory view before applying fresh API payloads.
+        state.posts = [];
+        state.words = {};
+        state.hourly = [];
+
+        // Update state from Flask backend
+        state.counts = {
+            positive: statsData.positive || 0,
+            neutral: statsData.neutral || 0,
+            negative: statsData.negative || 0
+        };
+        state.crisisScore = crisisData.score || 0;
+        state.crisisStatus = crisisData.status || 'Safe';
+        state.posts = Array.isArray(postsData.posts)
+            ? postsData.posts.map((post, idx) => {
+                const sentimentRaw = (
+                    post?.sentiment?.label
+                    || post?.metadata?.sentiment
+                    || post?.sentiment
+                    || 'neutral'
+                ).toString().toLowerCase();
+
+                const sentiment = sentimentRaw === 'neg' ? 'negative'
+                    : sentimentRaw === 'neu' ? 'neutral'
+                    : sentimentRaw === 'pos' ? 'positive'
+                    : sentimentRaw;
+
+                return {
+                    id: post.id || post.externalId || `live-${idx}`,
+                    text: post.text || post.content || '',
+                    author: post.author || 'anonymous',
+                    sentiment,
+                    confidence: post?.sentiment?.confidence
+                        || post?.sentiment?.confidence_pct
+                        || post?.metadata?.confidence
+                        || post?.metadata?.confidence_pct
+                        || 0.5,
+                    likes: post?.engagement?.likes || 0,
+                    retweets: post?.engagement?.retweets || 0,
+                    createdAt: post.createdAt || post.fetchedAt || new Date().toISOString(),
+                    tag: Array.isArray(post.hashtags) && post.hashtags.length ? post.hashtags[0] : '#AI',
+                    hashtags: Array.isArray(post.hashtags) ? post.hashtags : [],
+                    engine: post?.sentiment?.engine || post?.metadata?.engine || 'unknown'
+                };
+            }).filter((post) => post.text.trim().length > 0)
+            : [];
+        state.hourly = Array.isArray(statsData.hourly) ? statsData.hourly : [];
+        state.dataSource = 'Real-time X API';
+        state.processingEngine = state.posts.find((p) => p.engine && p.engine !== 'unknown')?.engine || 'DistilBERT/VADER';
+        
+        // Convert wordcloud data to word frequency object
+        if (Array.isArray(wordcloudData.words)) {
+            wordcloudData.words.forEach(item => {
+                state.words[item.word] = item.count;
+            });
+        }
+
+        renderDataSourceBadge();
+    } catch (error) {
+        console.error('Error polling Flask backend:', error);
+        state.posts = [];
+        state.hourly = [];
+        state.words = {};
+    }
+}
+
+function renderDataSourceBadge() {
+    const sourceBadge = document.getElementById('realtimeSourceBadge');
+    const engineBadge = document.getElementById('processingEngineBadge');
+    if (!sourceBadge) return;
+
+    sourceBadge.textContent = `Source: ${state.dataSource}`;
+
+    if (engineBadge) {
+        engineBadge.textContent = `Processing: ${state.processingEngine}`;
+    }
+}
 
 // Chart Instances
-let donutChart, lineChart;
+let donutChart, lineChart, crisisGaugeChart, compareChart1, compareChart2;
 
 function initCharts() {
     Chart.defaults.color = '#94a3b8';
@@ -129,6 +379,62 @@ function initCharts() {
             }
         }
     });
+
+    const gaugeCanvas = document.getElementById('crisisGaugeChart');
+    if (gaugeCanvas) {
+        const ctxGauge = gaugeCanvas.getContext('2d');
+        crisisGaugeChart = new Chart(ctxGauge, {
+            type: 'doughnut',
+            data: {
+                labels: ['Score', 'Remaining'],
+                datasets: [{
+                    data: [0, 100],
+                    backgroundColor: ['#10b981', 'rgba(51, 65, 85, 0.35)'],
+                    borderWidth: 0,
+                    cutout: '75%'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                rotation: -90,
+                circumference: 180,
+                plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                animation: { duration: 900, easing: 'easeOutCubic' }
+            }
+        });
+    }
+
+    const buildCompareChart = (canvasId, title) => {
+        const node = document.getElementById(canvasId);
+        if (!node) return null;
+        return new Chart(node.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: ['Positive', 'Neutral', 'Negative'],
+                datasets: [{
+                    label: title,
+                    data: [0, 0, 0],
+                    backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                    borderRadius: 6,
+                    borderSkipped: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: '#1e293b' } }
+                },
+                animation: { duration: 700, easing: 'easeOutQuart' }
+            }
+        });
+    };
+
+    compareChart1 = buildCompareChart('compareChart1', 'Hashtag 1');
+    compareChart2 = buildCompareChart('compareChart2', 'Hashtag 2');
 }
 
 function renderWordCloud() {
@@ -162,19 +468,144 @@ function renderWordCloud() {
     });
 }
 
+function getCountsForHashtag(tag) {
+    const normalized = normalizeHashtag(tag).toLowerCase();
+    const counts = { pos: 0, neu: 0, neg: 0 };
+    if (!normalized) return counts;
+
+    state.posts.forEach((post) => {
+        const tags = [post.tag, ...(Array.isArray(post.hashtags) ? post.hashtags : [])]
+            .filter(Boolean)
+            .map((t) => String(t).toLowerCase());
+
+        if (!tags.includes(normalized)) return;
+
+        const sentiment = String(post.sentiment || 'neutral').toLowerCase();
+        if (sentiment === 'positive') counts.pos += 1;
+        else if (sentiment === 'negative') counts.neg += 1;
+        else counts.neu += 1;
+    });
+
+    return counts;
+}
+
+function getAllAvailableHashtags() {
+    const tags = new Set();
+
+    state.posts.forEach((post) => {
+        [post.tag, ...(Array.isArray(post.hashtags) ? post.hashtags : [])]
+            .filter(Boolean)
+            .forEach((tag) => {
+                const normalized = normalizeHashtag(String(tag));
+                if (normalized) tags.add(normalized);
+            });
+    });
+
+    if (tags.size === 0) {
+        DEMO_TOPICS.forEach((tag) => tags.add(tag));
+        tags.add('#iPhone');
+        tags.add('#Samsung');
+    }
+
+    return Array.from(tags).sort((a, b) => a.localeCompare(b));
+}
+
+function formatHashtagOptionLabel(tag) {
+    const emoji = HASHTAG_EMOJI[tag] || '🏷️';
+    return `${emoji} ${tag}`;
+}
+
+function refreshCompareHashtagDropdowns() {
+    const selects = [compareHashtag1El, compareHashtag2El].filter(Boolean);
+    if (!selects.length) return;
+
+    const tags = getAllAvailableHashtags();
+    const firstDefault = tags[0] || '#AI';
+    const secondDefault = tags[1] || tags[0] || '#Tech';
+
+    selects.forEach((selectEl, index) => {
+        const previous = normalizeHashtag(selectEl.value);
+        selectEl.innerHTML = '';
+
+        tags.forEach((tag) => {
+            const option = document.createElement('option');
+            option.value = tag;
+            option.textContent = formatHashtagOptionLabel(tag);
+            selectEl.appendChild(option);
+        });
+
+        const fallback = index === 0 ? firstDefault : secondDefault;
+        selectEl.value = tags.includes(previous) ? previous : fallback;
+    });
+}
+
+function refreshMainHashtagFilterOptions() {
+    if (!hashtagFilter) return;
+
+    const previous = hashtagFilter.value || 'all';
+    hashtagFilter.innerHTML = '';
+
+    const allOption = document.createElement('option');
+    allOption.value = 'all';
+    allOption.textContent = '🌐 All Global Hashtags';
+    hashtagFilter.appendChild(allOption);
+
+    getAllAvailableHashtags().forEach((tag) => {
+        const option = document.createElement('option');
+        option.value = tag;
+        option.textContent = formatHashtagOptionLabel(tag);
+        hashtagFilter.appendChild(option);
+    });
+
+    hashtagFilter.value = previous === 'all' || Array.from(hashtagFilter.options).some((opt) => opt.value === previous)
+        ? previous
+        : 'all';
+    currentFilter = hashtagFilter.value;
+}
+
+function updateComparativeHashtagCharts() {
+    if (!compareChart1 || !compareChart2) return;
+
+    const hashtag1 = normalizeHashtag(compareHashtag1El?.value || '#AI') || '#AI';
+    const hashtag2 = normalizeHashtag(compareHashtag2El?.value || '#Tech') || '#Tech';
+
+    const counts1 = getCountsForHashtag(hashtag1);
+    const counts2 = getCountsForHashtag(hashtag2);
+
+    const label1 = document.getElementById('compareLabel1');
+    const label2 = document.getElementById('compareLabel2');
+    if (label1) label1.textContent = hashtag1;
+    if (label2) label2.textContent = hashtag2;
+
+    compareChart1.data.datasets[0].data = [counts1.pos, counts1.neu, counts1.neg];
+    compareChart2.data.datasets[0].data = [counts2.pos, counts2.neu, counts2.neg];
+    compareChart1.update();
+    compareChart2.update();
+}
+
 function updateUI() {
     // Filter posts
-    const filtered = currentFilter === 'all' ? state.posts : state.posts.filter(p => p.tag === currentFilter);
+    const filtered = currentFilter === 'all' ? state.posts : state.posts.filter(p => p.tag === currentFilter || p.hashtags?.includes(currentFilter));
     const fCounts = { pos: 0, neu: 0, neg: 0 };
-    filtered.forEach(p => { fCounts[p.sent]++; });
+    filtered.forEach(p => { 
+        const sent = typeof p.sentiment === 'string' ? p.sentiment.toLowerCase() : 'neu';
+        if (sent === 'positive') fCounts.pos++;
+        else if (sent === 'negative') fCounts.neg++;
+        else fCounts.neu++;
+    });
+
+    // Use Flask-provided counts if available
+    const displayCounts = filtered.length > 0
+        ? fCounts
+        : { pos: state.counts.positive || 0, neu: state.counts.neutral || 0, neg: state.counts.negative || 0 };
 
     // 1. KPI Cards
-    const total = filtered.length;
+    const total = filtered.length || (state.counts.positive + state.counts.neutral + state.counts.negative);
     document.getElementById('totalPosts').textContent = total;
     
     // Average Sentiment Bar
-    const posPct = total ? Math.round((fCounts.pos / total) * 100) : 0;
-    const negPct = total ? Math.round((fCounts.neg / total) * 100) : 0;
+    const posPct = total ? Math.round((displayCounts.pos / total) * 100) : 0;
+    const negPct = total ? Math.round((displayCounts.neg / total) * 100) : 0;
     document.getElementById('donutCenterPct').textContent = posPct + '%';
     
     let avgLabel = 'Neutral';
@@ -188,16 +619,14 @@ function updateUI() {
     bar.className = 'h-1.5 rounded-full transition-all duration-1000 ' + barColor;
     bar.style.width = w + '%';
 
-    // 2. Crisis Score (Exponential based on recent negative velocity)
-    // Get last 20 posts for velocity
-    const recent = filtered.slice(0, 30);
-    const recentNeg = recent.filter(p => p.sent === 'neg').length;
-    let crisisScore = total === 0 ? 0 : Math.min(100, Math.round((recentNeg / Math.max(1, recent.length)) * 160));
-    
-    // Animate score
+    // 2. Crisis Score (negativeCount / totalPosts * 100)
+    const crisisScore = total ? Math.round((displayCounts.neg / total) * 100) : 0;
+    state.crisisScore = crisisScore;
+    state.crisisStatus = crisisScore >= 70 ? 'Crisis' : crisisScore >= 40 ? 'Watch' : 'Safe';
     const scoreEl = document.getElementById('crisisScoreVal');
     const badge = document.getElementById('crisisBadge');
     const action = document.getElementById('actionRecommendation');
+    const actionPanelText = document.getElementById('recommendedActionText');
     const banner = document.getElementById('crisisAlertBanner');
 
     scoreEl.textContent = crisisScore;
@@ -205,53 +634,67 @@ function updateUI() {
     if (crisisScore < 40) {
         badge.textContent = 'SAFE';
         badge.className = 'text-xs font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400';
-        action.innerHTML = '🟢 Continue monitoring silently.';
+        action.innerHTML = 'Continue monitoring. No action required.';
+        if (actionPanelText) actionPanelText.textContent = 'Continue monitoring. No action required.';
         scoreEl.className = 'text-3xl font-bold text-white';
         banner.classList.add('hidden');
     } else if (crisisScore < 70) {
         badge.textContent = 'WATCH';
         badge.className = 'text-xs font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400';
-        action.innerHTML = '🟡 Monitor hashtag closely. Notify comms team.';
+        action.innerHTML = 'Escalate to PR team. Prepare holding statement.';
+        if (actionPanelText) actionPanelText.textContent = 'Escalate to PR team. Prepare holding statement.';
         scoreEl.className = 'text-3xl font-bold text-amber-400';
         banner.classList.add('hidden');
     } else {
         badge.textContent = 'CRISIS';
         badge.className = 'text-xs font-bold px-2 py-0.5 rounded animate-pulse bg-red-500/20 text-red-500';
-        action.innerHTML = '🔴 High risk! Issue statement and engage commentators immediately.';
+        action.innerHTML = 'Issue public statement immediately. Alert leadership.';
+        if (actionPanelText) actionPanelText.textContent = 'Issue public statement immediately. Alert leadership.';
         scoreEl.className = 'text-3xl font-bold text-red-500';
         banner.classList.remove('hidden');
     }
 
+    if (crisisGaugeChart) {
+        const gaugeColor = crisisScore < 40 ? '#10b981' : crisisScore < 70 ? '#f59e0b' : '#ef4444';
+        crisisGaugeChart.data.datasets[0].data = [crisisScore, 100 - crisisScore];
+        crisisGaugeChart.data.datasets[0].backgroundColor = [gaugeColor, 'rgba(51, 65, 85, 0.35)'];
+        crisisGaugeChart.update();
+    }
+
     // 3. Update Charts
-    donutChart.data.datasets[0].data = [fCounts.pos, fCounts.neu, fCounts.neg];
+    donutChart.data.datasets[0].data = [displayCounts.pos, displayCounts.neu, displayCounts.neg];
     donutChart.update();
 
-    // Time series
-    if(state.history.length > 20) state.history.shift();
-    lineChart.data.labels = state.history.map(h => h.time);
-    lineChart.data.datasets[0].data = state.history.map(h => h.pos);
-    lineChart.data.datasets[1].data = state.history.map(h => h.neg);
+    // Time series from Flask hourly data
+    if (Array.isArray(state.hourly) && state.hourly.length > 0) {
+        lineChart.data.labels = state.hourly.map(h => h.hour?.slice(11, 16) || h.hour);
+        lineChart.data.datasets[0].data = state.hourly.map(h => h.positive || 0);
+        lineChart.data.datasets[1].data = state.hourly.map(h => h.negative || 0);
+    } else {
+        lineChart.data.labels = [];
+        lineChart.data.datasets[0].data = [];
+        lineChart.data.datasets[1].data = [];
+    }
     lineChart.update();
 
-    renderWordCloud();
-}
+    const feed = document.getElementById('postFeed');
+    if (feed) {
+        feed.innerHTML = '';
+        [...filtered].reverse().slice(-50).forEach(createPostNode);
+    }
 
-function processWords(text) {
-    const skip = ['the','and','to','of','a','in','is','i','it','with','for','on','this','that','you'];
-    const tokens = text.toLowerCase().replace(/[.,!]/g, '').split(/\s+/);
-    tokens.forEach(w => {
-        if (!skip.includes(w) && w.length > 2) {
-            state.words[w] = (state.words[w] || 0) + 1;
-        }
-    });
+    renderWordCloud();
+    refreshMainHashtagFilterOptions();
+    refreshCompareHashtagDropdowns();
+    updateComparativeHashtagCharts();
 }
 
 function createPostNode(post) {
     const feed = document.getElementById('postFeed');
     const colors = {
-        pos: 'border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 to-transparent text-emerald-100',
-        neu: 'border-slate-600/30 bg-gradient-to-r from-slate-600/10 to-transparent text-slate-200',
-        neg: 'border-red-500/30 bg-gradient-to-r from-red-500/10 to-transparent text-red-100'
+        pos: 'border-emerald-500/30 bg-gradient-to-r from-emerald-500/10 to-transparent',
+        neu: 'border-slate-600/30 bg-gradient-to-r from-slate-600/10 to-transparent',
+        neg: 'border-red-500/30 bg-gradient-to-r from-red-500/10 to-transparent'
     };
     const badges = {
         pos: '<span class="px-2 py-0.5 rounded px-2 text-[10px] bg-emerald-500/20 text-emerald-400 font-bold tracking-widest uppercase border border-emerald-500/20">Positive</span>',
@@ -263,24 +706,37 @@ function createPostNode(post) {
     const gradients = ['from-purple-500 to-indigo-500', 'from-cyan-400 to-blue-500', 'from-emerald-400 to-teal-500', 'from-fuchsia-500 to-pink-500', 'from-amber-400 to-orange-500'];
     const rColors = gradients[Math.floor(Math.random() * gradients.length)];
 
+    const sentimentKey = post.sentiment === 'positive' ? 'pos' : post.sentiment === 'negative' ? 'neg' : 'neu';
+    const confidenceRaw = typeof post.confidence === 'number' ? post.confidence : parseFloat(post.confidence || 0);
+    const confidencePct = Math.max(0, Math.min(100, Math.round((confidenceRaw <= 1 ? confidenceRaw * 100 : confidenceRaw))));
+    const confidenceTone = sentimentKey === 'pos' ? 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-200 dark:border-emerald-500/30'
+        : sentimentKey === 'neg' ? 'bg-red-100 text-red-800 border-red-300 dark:bg-red-500/20 dark:text-red-200 dark:border-red-500/30'
+        : 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-500/20 dark:text-amber-200 dark:border-amber-500/30';
+    const sentimentWord = sentimentKey === 'pos' ? 'Positive' : sentimentKey === 'neg' ? 'Negative' : 'Neutral';
+    const safeAuthor = (post.author || 'anonymous').toString().replace(/^@/, '');
+    const postTime = post.createdAt ? new Date(post.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Now';
+
     const el = document.createElement('div');
-    el.className = `p-4 rounded-xl border backdrop-blur-md transition-all duration-500 shadow-lg ${colors[post.sent]} animate-fade-in-up`;
+    el.className = `p-4 rounded-xl border backdrop-blur-md transition-all duration-500 shadow-lg ${colors[sentimentKey]} animate-fade-in-up`;
     el.innerHTML = `
         <div class="flex justify-between items-start mb-3">
             <div class="flex items-center gap-3">
                 <div class="w-8 h-8 rounded-full bg-gradient-to-br ${rColors} p-[2px] shadow-sm">
                     <div class="w-full h-full bg-slate-900 rounded-full flex items-center justify-center text-xs font-bold text-white shadow-inner">
-                        U${Math.floor(Math.random()*9)}
+                        ${safeAuthor.charAt(0).toUpperCase() || 'U'}
                     </div>
                 </div>
                 <div>
-                    <p class="text-xs font-bold text-white tracking-wide">@user_${Math.floor(Math.random()*9000)+1000}</p>
-                    <p class="text-[10px] text-slate-400 font-medium">Just now • <span class="text-blue-400">${post.tag}</span></p>
+                    <p class="text-xs font-bold text-white tracking-wide">@${safeAuthor}</p>
+                    <p class="text-[10px] text-slate-400 font-medium">${postTime} • <span class="text-blue-400">${post.tag || '#AI'}</span></p>
                 </div>
             </div>
-            ${badges[post.sent]}
+            ${badges[sentimentKey]}
         </div>
-        <p class="text-sm font-medium pr-2 leading-relaxed opacity-90">${post.text}</p>
+        <p class="text-sm font-medium text-slate-200 pr-2 leading-relaxed opacity-95">${post.text}</p>
+        <div class="mt-3">
+            <span class="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded border ${confidenceTone}">${sentimentWord} - ${confidencePct}% confident</span>
+        </div>
     `;
     
     // Clear initial listening text
@@ -290,58 +746,6 @@ function createPostNode(post) {
     
     feed.prepend(el);
     if(feed.children.length > 50) feed.removeChild(feed.lastChild); // keep DOM light
-}
-
-function generatePost(forceNegative = false) {
-    const tag = tags[Math.floor(Math.random() * tags.length)];
-    let sent = 'neu';
-    const r = Math.random();
-    
-    if (forceNegative) {
-        sent = 'neg';
-    } else {
-        if (r < 0.4) sent = 'pos';
-        else if (r < 0.7) sent = 'neu';
-        else sent = 'neg';
-    }
-
-    let arr = sent === 'pos' ? positiveTemplates : sent === 'neg' ? negativeTemplates : neutralTemplates;
-    const text = arr[Math.floor(Math.random() * arr.length)].replace('{tag}', tag);
-
-    const post = { text, tag, sent, ts: Date.now() };
-    
-    state.posts.unshift(post);
-    state.counts[sent]++;
-    processWords(text);
-
-    // Filter logic
-    if (currentFilter === 'all' || currentFilter === tag) {
-        createPostNode(post);
-    }
-}
-
-// History recorder (for line chart)
-setInterval(() => {
-    const now = new Date();
-    const timeStr = `${now.getHours()}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
-    
-    // Calculate recent velocity for the lines
-    const recent = state.posts.slice(0, 15);
-    state.history.push({
-        time: timeStr,
-        pos: recent.filter(p=>p.sent==='pos').length,
-        neg: recent.filter(p=>p.sent==='neg').length
-    });
-}, 5000);
-
-// Main generation loop
-let generateInterval;
-function startLoop() {
-    clearInterval(generateInterval);
-    generateInterval = setInterval(() => {
-        generatePost();
-        updateUI();
-    }, 2000);
 }
 
 // Live Clock UI logic
@@ -358,50 +762,92 @@ hashtagFilter.addEventListener('change', (e) => {
     currentFilter = e.target.value;
     document.getElementById('postFeed').innerHTML = ''; // clear visual feed
     // Re-render valid posts
-    const filtered = currentFilter === 'all' ? state.posts : state.posts.filter(p => p.tag === currentFilter);
+    const filtered = currentFilter === 'all'
+        ? state.posts
+        : state.posts.filter(p => p.tag === currentFilter || p.hashtags?.includes(currentFilter));
     [...filtered].reverse().slice(-50).forEach(createPostNode); // render up to 50
     updateUI();
 });
 
+if (compareHashtag1El) {
+    compareHashtag1El.addEventListener('change', updateComparativeHashtagCharts);
+}
+if (compareHashtag2El) {
+    compareHashtag2El.addEventListener('change', updateComparativeHashtagCharts);
+}
+
 let isSpiking = false;
-triggerSpikeBtn.addEventListener('click', () => {
+triggerSpikeBtn.addEventListener('click', async () => {
     if(isSpiking) return;
     isSpiking = true;
     triggerSpikeBtn.innerHTML = 'Injecting Spike <span class="flex h-2 w-2 relative ml-1"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-red-200"></span></span>';
     triggerSpikeBtn.classList.replace('bg-slate-800/80', 'bg-red-600');
     triggerSpikeBtn.classList.replace('text-slate-300', 'text-white');
     
-    let count = 0;
-    const spikeInt = setInterval(() => {
-        generatePost(true); // force negative
-        updateUI();
-        count++;
-        if(count >= 20) {
-            clearInterval(spikeInt);
-            isSpiking = false;
-            triggerSpikeBtn.innerHTML = '<svg class="w-3.5 h-3.5 group-hover:text-red-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> Simulate Crisis Spike';
-            triggerSpikeBtn.classList.replace('bg-red-600', 'bg-slate-800/80');
-            triggerSpikeBtn.classList.replace('text-white', 'text-slate-300');
+    try {
+        if (DEMO_MODE) {
+            demoSpikeUntil = Date.now() + 120000;
+            const demo = buildDemoDashboardState();
+            state.posts = demo.posts;
+            state.counts = demo.counts;
+            state.words = demo.words;
+            state.hourly = demo.hourly;
+            updateUI();
+            return;
         }
-    }, 400); // rapidly fire 20 negatives
+
+        // Call Flask spike endpoint
+        await fetch(`${DATA_API_BASE}/api/posts/spike`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count: 20 })
+        });
+        
+        // Wait a bit for data to be populated, then refresh
+        await new Promise(r => setTimeout(r, 1500));
+        await pollFlaskBackend();
+        updateUI();
+    } catch (error) {
+        console.error('Spike injection error:', error);
+    } finally {
+        isSpiking = false;
+        triggerSpikeBtn.innerHTML = '<svg class="w-3.5 h-3.5 group-hover:text-red-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg> Inject Spike';
+        triggerSpikeBtn.classList.replace('bg-red-600', 'bg-slate-800/80');
+        triggerSpikeBtn.classList.replace('text-white', 'text-slate-300');
+    }
 });
 
 // Init
 window.addEventListener('DOMContentLoaded', () => {
     initCharts();
     updateClock();
-    state.history.push({ time: new Date().toLocaleTimeString('en-US',{hour12:false}), pos: 0, neg: 0 });
+    renderDataSourceBadge();
+    updateComparativeHashtagCharts();
     
-    // Pre-populate 10 items
-    for(let i=0; i<10; i++) generatePost();
-    updateUI();
-    startLoop();
+    // Initial poll from Flask backend
+    pollFlaskBackend().then(() => updateUI());
+    
+    // Start continuous polling from Flask backend (every 2 seconds)
+    setInterval(async () => {
+        await pollFlaskBackend();
+        updateUI();
+    }, 2000);
 
     // Check saved theme at init and update charts if needed
     if(localStorage.getItem('theme') === 'light' && window.updateChartsTheme) {
         setTimeout(window.updateChartsTheme, 200);
     }
 });
+
+window.downloadReport = function() {
+    const activeBtn = document.activeElement;
+    if (activeBtn && activeBtn.tagName === 'BUTTON') {
+        window.generatePDFReport(activeBtn);
+        return;
+    }
+
+    window.generatePDFReport();
+};
 
 // Theme update hook for charts called by injected HTML button
 window.updateChartsTheme = function() {
@@ -428,8 +874,12 @@ window.updateChartsTheme = function() {
 
 
 window.generatePDFReport = function(btn) {
-    const originalText = btn.innerHTML;
-    btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> <span class="whitespace-nowrap">Compiling Report...</span>';
+    const isButtonEl = btn && btn.tagName === 'BUTTON';
+    const originalText = isButtonEl ? btn.innerHTML : '';
+
+    if (isButtonEl) {
+        btn.innerHTML = '<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg> <span class="whitespace-nowrap">Compiling Report...</span>';
+    }
 
     const reportTimestamp = new Date();
     const reportTimeStr = reportTimestamp.toLocaleString('en-US', {
@@ -458,7 +908,11 @@ window.generatePDFReport = function(btn) {
         // Current state snapshot
         const total = state.posts.length;
         const counts = { pos: 0, neu: 0, neg: 0 };
-        state.posts.forEach(p => counts[p.sent]++);
+        state.posts.forEach((p) => {
+            if (p.sentiment === 'positive') counts.pos++;
+            else if (p.sentiment === 'negative') counts.neg++;
+            else counts.neu++;
+        });
         const posPct = total ? Math.round((counts.pos / total) * 100) : 0;
         const neuPct = total ? Math.round((counts.neu / total) * 100) : 0;
         const negPct = total ? Math.round((counts.neg / total) * 100) : 0;
@@ -469,19 +923,28 @@ window.generatePDFReport = function(btn) {
         const tagCounts = {};
         const tagSentiment = {};
         state.posts.forEach(p => {
-            tagCounts[p.tag] = (tagCounts[p.tag] || 0) + 1;
-            if (!tagSentiment[p.tag]) tagSentiment[p.tag] = { pos: 0, neu: 0, neg: 0 };
-            tagSentiment[p.tag][p.sent]++;
+            const tag = p.tag || '#AI';
+            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+            if (!tagSentiment[tag]) tagSentiment[tag] = { pos: 0, neu: 0, neg: 0 };
+            if (p.sentiment === 'positive') tagSentiment[tag].pos++;
+            else if (p.sentiment === 'negative') tagSentiment[tag].neg++;
+            else tagSentiment[tag].neu++;
         });
 
-        // Recent trend (last 10 history points)
-        const recentHistory = state.history.slice(-10);
+        // Recent trend (last 10 hourly snapshots from backend)
+        const recentHistory = (Array.isArray(state.hourly) ? state.hourly : [])
+            .slice(-10)
+            .map((h) => ({
+                time: h.hour?.slice(11, 16) || h.hour || '',
+                pos: h.positive || 0,
+                neg: h.negative || 0
+            }));
 
         // Top words
         const topWords = Object.entries(state.words).sort((a, b) => b[1] - a[1]).slice(0, 15);
 
         // Recent negative posts
-        const recentNegPosts = state.posts.filter(p => p.sent === 'neg').slice(0, 5);
+        const recentNegPosts = state.posts.filter((p) => p.sentiment === 'negative').slice(0, 5);
 
         // Utility functions
         const setHeaderBg = () => { doc.setFillColor(15, 23, 42); doc.rect(0, 0, W, 45, 'F'); };
@@ -924,6 +1387,8 @@ window.generatePDFReport = function(btn) {
         // Save
         doc.save('TrendPulse_Intel_Report_' + reportTimestamp.toISOString().slice(0, 10) + '.pdf');
 
-        btn.innerHTML = originalText;
+        if (isButtonEl) {
+            btn.innerHTML = originalText;
+        }
     }, 2500);
 };

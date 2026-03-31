@@ -18,21 +18,8 @@ dbHtml = dbHtml.replace(/<div class="relative">\s*<div class="absolute inset-0 b
         </div>`);
 fs.writeFileSync('public/dashboard.html', dbHtml);
 
-// 3. Admin
-let adHtml = fs.readFileSync('public/admin.html', 'utf8');
-adHtml = adHtml.replace(/<h1 class="font-bold text-xl text-white flex items-center gap-3">[\s\S]*?<\/h1>/g,
-    `<div class="flex items-center gap-3">
-                <div class="flex flex-col items-center">
-                    <img src="/light.jpeg" class="h-10 w-auto dark:hidden drop-shadow-sm" alt="TrendPulse">
-                    <img src="/dark.jpeg" class="h-10 w-auto hidden dark:block drop-shadow-lg" alt="TrendPulse">
-                    <span class="text-[10px] font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400 mt-0.5">TrendPulse</span>
-                </div>
-                <span class="text-xl font-bold text-red-500 tracking-tight mt-1 border-l-2 border-red-500/30 pl-4">Admin Core</span>
-            </div>`);
-fs.writeFileSync('public/admin.html', adHtml);
-
-// 4. Auth Logins
-const authFiles = ['login.html', 'signup.html', 'admin-login.html'];
+// 3. Auth pages
+const authFiles = ['login.html', 'signup.html'];
 authFiles.forEach(file => {
     let content = fs.readFileSync('public/' + file, 'utf8');
     content = content.replace(/<div class="relative w-14 h-14 mb-3">[\s\S]*?<\/h1>/g,

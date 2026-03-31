@@ -1,6 +1,9 @@
 const signupForm = document.getElementById('signupForm');
 const message = document.getElementById('message');
 
+// Use same-origin API to avoid port mismatch issues.
+const API_BASE = window.location.origin;
+
 signupForm.addEventListener('submit', async (event) => {
   event.preventDefault();
 
@@ -12,7 +15,7 @@ signupForm.addEventListener('submit', async (event) => {
   const password = document.getElementById('password').value;
 
   try {
-    const response = await fetch('/api/auth/signup', {
+    const response = await fetch(`${API_BASE}/api/auth/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, email, password }),

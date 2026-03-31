@@ -1,0 +1,104 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;800&display=swap");
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: 'Space Grotesk', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: radial-gradient(circle at 12% 18%, #172554 0%, #090f2e 34%, #050816 70%, #03050f 100%);
+  color: #e2e8f0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.bg-dot-grid {
+  position: relative;
+  isolation: isolate;
+}
+
+.bg-dot-grid::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 30px 30px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bg-dot-grid::before {
+  content: "";
+  position: absolute;
+  inset: -20% -10% auto auto;
+  width: 620px;
+  height: 620px;
+  border-radius: 999px;
+  background: radial-gradient(circle at center, rgba(34, 211, 238, 0.22) 0%, rgba(15, 23, 42, 0) 68%);
+  filter: blur(26px);
+  opacity: 0.9;
+  z-index: 0;
+  animation: float-glow 12s ease-in-out infinite;
+}
+
+.glass-card {
+  background: linear-gradient(130deg, rgba(22, 28, 55, 0.58) 0%, rgba(16, 22, 44, 0.78) 55%, rgba(12, 16, 36, 0.84) 100%);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  box-shadow: 0 22px 45px rgba(2, 6, 23, 0.36);
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.glass-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(56, 189, 248, 0.42);
+  box-shadow: 0 28px 56px rgba(2, 6, 23, 0.5);
+}
+
+.alert-pulse {
+  animation: pulse-red 2s infinite;
+}
+
+.glass-card,
+.alert-pulse {
+  animation: reveal-up 440ms ease both;
+}
+
+@keyframes float-glow {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-22px, 18px, 0) scale(1.04);
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes reveal-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-red {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 16px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}

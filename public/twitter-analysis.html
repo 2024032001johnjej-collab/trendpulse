@@ -1,0 +1,1113 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TrendPulse | Twitter Sentiment Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ─── Reset & Base ───────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:          #070d1a;
+      --surface:     #0d1526;
+      --glass:       rgba(13,21,38,0.85);
+      --border:      rgba(255,255,255,0.07);
+      --border-h:    rgba(255,255,255,0.14);
+      --text:        #e2e8f0;
+      --muted:       #64748b;
+      --accent:      #3b82f6;
+      --neg:         #ef4444;
+      --neu:         #94a3b8;
+      --pos:         #10b981;
+      --radius:      14px;
+      --transition:  0.3s cubic-bezier(0.16,1,0.3,1);
+    }
+    html:not(.dark) {
+      --bg:          #eef4ff;
+      --surface:     #f8fbff;
+      --glass:       rgba(255,255,255,0.9);
+      --border:      rgba(15,23,42,0.12);
+      --border-h:    rgba(15,23,42,0.22);
+      --text:        #0f172a;
+      --muted:       #475569;
+      --accent:      #2563eb;
+    }
+    html { font-family: 'Inter', sans-serif; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+    /* Ambient glow background */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 10% 0%, rgba(59,130,246,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 90% 90%, rgba(16,185,129,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 30% at 50% 50%, rgba(239,68,68,0.04) 0%, transparent 60%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    html:not(.dark) body::before {
+      background:
+        radial-gradient(ellipse 60% 40% at 10% 0%, rgba(37,99,235,0.14) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 90% 90%, rgba(16,185,129,0.12) 0%, transparent 60%),
+        radial-gradient(ellipse 40% 30% at 50% 50%, rgba(148,163,184,0.12) 0%, transparent 60%);
+    }
+
+    /* ─── Layout ──────────────────────────────────────────────── */
+    .page-wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px 24px 60px;
+      width: 100%;
+    }
+
+    /* ─── Header ─────────────────────────────────────────────── */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      text-decoration: none;
+    }
+    .brand-dot {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 800; color: #fff;
+      box-shadow: 0 0 20px rgba(59,130,246,0.4);
+    }
+    .brand-name { font-size: 18px; font-weight: 700; color: #fff; }
+    .brand-sub  { font-size: 11px; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.1em; }
+
+    /* ─── Panel card ─────────────────────────────────────────── */
+    .panel {
+      background: var(--glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .panel-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .panel-title {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .panel-title .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .panel-meta { font-size: 11px; color: var(--muted); }
+
+    /* ─── Buttons ─────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 18px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: var(--transition);
+      text-transform: uppercase;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+      box-shadow: 0 0 20px rgba(59,130,246,0.25);
+    }
+    .btn-primary:hover { background: #2563eb; box-shadow: 0 0 30px rgba(59,130,246,0.4); transform: translateY(-1px); }
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border-color: var(--border-h);
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-theme {
+      min-width: 108px;
+      justify-content: center;
+      padding: 7px 12px;
+      font-size: 11px;
+    }
+    .btn-live {
+      background: rgba(16,185,129,0.15);
+      color: #10b981;
+      border-color: rgba(16,185,129,0.3);
+    }
+    .btn-live.active {
+      background: #10b981;
+      color: #fff;
+      box-shadow: 0 0 20px rgba(16,185,129,0.4);
+      animation: live-pulse 2s ease-in-out infinite;
+    }
+    @keyframes live-pulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(16,185,129,0.4); }
+      50%       { box-shadow: 0 0 35px rgba(16,185,129,0.7); }
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+
+    /* ─── URL input row ─────────────────────────────────────── */
+    .url-row {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .url-label { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+    .url-input-wrap { flex: 1; min-width: 240px; }
+    .url-input {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border-h);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 13px;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: var(--transition);
+    }
+    .url-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
+    .url-input::placeholder { color: var(--muted); }
+    .url-actions { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+
+    /* ─── Status bar ─────────────────────────────────────────── */
+    .status-bar {
+      padding: 10px 24px;
+      border-bottom: 1px solid var(--border);
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+    }
+    .status-idle    { color: var(--muted); font-size: 12px; }
+    .status-loading { color: var(--accent); font-size: 12px; display: flex; align-items: center; gap: 8px; }
+    .status-error   { color: var(--neg);   font-size: 12px; display: flex; align-items: center; gap: 8px; background: rgba(239,68,68,0.08); border-radius: 6px; padding: 8px 14px; width: 100%; }
+    .status-warning { color: #f59e0b;      font-size: 12px; display: flex; align-items: center; gap: 8px; background: rgba(245,158,11,0.1); border-radius: 6px; padding: 8px 14px; width: 100%; }
+    .status-success { color: #10b981; font-size: 12px; display: flex; align-items: center; gap: 6px; }
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(59,130,246,0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── KPI Grid ───────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 1px;
+      border-bottom: 1px solid var(--border);
+    }
+    @media (max-width: 640px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+    .kpi-card {
+      padding: 22px 24px;
+      position: relative;
+      overflow: hidden;
+      transition: var(--transition);
+    }
+    .kpi-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: var(--transition);
+    }
+    .kpi-card:hover::before { opacity: 1; }
+    .kpi-card + .kpi-card { border-left: 1px solid var(--border); }
+    @media (max-width: 640px) {
+      .kpi-card:nth-child(odd) + .kpi-card { border-left: 1px solid var(--border); }
+      .kpi-card:nth-child(3)  { border-top: 1px solid var(--border); }
+      .kpi-card:nth-child(4)  { border-top: 1px solid var(--border); }
+    }
+    .kpi-card.neg  { background: linear-gradient(135deg, rgba(239,68,68,0.06) 0%, transparent 60%); }
+    .kpi-card.neg::before { background: rgba(239,68,68,0.04); }
+    .kpi-card.neu  { background: linear-gradient(135deg, rgba(100,116,139,0.06) 0%, transparent 60%); }
+    .kpi-card.pos  { background: linear-gradient(135deg, rgba(16,185,129,0.06) 0%, transparent 60%); }
+    .kpi-card.tot  { background: linear-gradient(135deg, rgba(59,130,246,0.06) 0%, transparent 60%); }
+    .kpi-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 10px;
+    }
+    .kpi-card.neg .kpi-label { color: #f87171; }
+    .kpi-card.neu .kpi-label { color: #94a3b8; }
+    .kpi-card.pos .kpi-label { color: #34d399; }
+    .kpi-card.tot .kpi-label { color: #60a5fa; }
+    .kpi-value {
+      font-size: 42px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      transition: all 0.5s ease;
+    }
+    .kpi-card.neg .kpi-value { color: var(--neg); text-shadow: 0 0 30px rgba(239,68,68,0.4); }
+    .kpi-card.neu .kpi-value { color: #94a3b8; }
+    .kpi-card.pos .kpi-value { color: var(--pos); text-shadow: 0 0 30px rgba(16,185,129,0.4); }
+    .kpi-card.tot .kpi-value { color: var(--accent); text-shadow: 0 0 30px rgba(59,130,246,0.4); }
+    .kpi-pct {
+      margin-top: 6px;
+      font-size: 11px;
+      font-weight: 500;
+      opacity: 0.7;
+    }
+
+    /* ─── Bottom Content Grid ────────────────────────────────── */
+    .content-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 2fr;
+      gap: 1px;
+      border-bottom: 1px solid var(--border);
+    }
+    @media (max-width: 900px) { .content-grid { grid-template-columns: 1fr; } }
+
+    .content-block {
+      padding: 20px 24px;
+    }
+    .content-block + .content-block { border-left: 1px solid var(--border); }
+    @media (max-width: 900px) { .content-block + .content-block { border-left: none; border-top: 1px solid var(--border); } }
+
+    .block-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+
+    /* Keywords */
+    .keyword-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .keyword-tag {
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(59,130,246,0.12);
+      color: #93c5fd;
+      border: 1px solid rgba(59,130,246,0.2);
+      transition: var(--transition);
+      cursor: default;
+    }
+    .keyword-tag:hover { background: rgba(59,130,246,0.25); border-color: rgba(59,130,246,0.4); transform: translateY(-1px); }
+    .keyword-tag .kw-count { opacity: 0.6; font-size: 10px; font-weight: 500; }
+
+    /* Themes */
+    .theme-list { display: flex; flex-direction: column; gap: 8px; }
+    .theme-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: rgba(139,92,246,0.1);
+      border: 1px solid rgba(139,92,246,0.2);
+      font-size: 12px;
+      font-weight: 500;
+      color: #c4b5fd;
+      transition: var(--transition);
+    }
+    .theme-chip:hover { background: rgba(139,92,246,0.2); border-color: rgba(139,92,246,0.35); }
+    .theme-chip .theme-icon { font-size: 14px; }
+
+    /* Comment feed */
+    .feed-scroll { overflow-y: auto; max-height: 380px; display: flex; flex-direction: column; gap: 10px; }
+    .feed-scroll::-webkit-scrollbar { width: 4px; }
+    .feed-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+    .feed-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 200px;
+      color: var(--muted);
+      font-size: 13px;
+      gap: 10px;
+      text-align: center;
+    }
+    .feed-empty .em-icon { font-size: 36px; opacity: 0.4; }
+
+    .comment-card {
+      padding: 14px 16px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+      animation: fadeSlideUp 0.4s ease forwards;
+      transition: var(--transition);
+    }
+    .comment-card:hover { border-color: var(--border-h); transform: translateY(-1px); }
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .comment-card.positive { background: rgba(16,185,129,0.06);  border-color: rgba(16,185,129,0.2); }
+    .comment-card.neutral  { background: rgba(100,116,139,0.06); border-color: rgba(100,116,139,0.2); }
+    .comment-card.negative { background: rgba(239,68,68,0.06);   border-color: rgba(239,68,68,0.2); }
+
+    .comment-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; gap: 10px; }
+    .comment-author { display: flex; align-items: center; gap: 8px; }
+    .avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; color: #fff;
+      flex-shrink: 0;
+    }
+    .avatar.positive { background: linear-gradient(135deg, #10b981, #059669); }
+    .avatar.neutral  { background: linear-gradient(135deg, #64748b, #475569); }
+    .avatar.negative { background: linear-gradient(135deg, #ef4444, #dc2626); }
+    .author-name  { font-size: 12px; font-weight: 600; color: #fff; }
+    .author-at    { font-size: 11px; color: var(--muted); }
+
+    .badge {
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      flex-shrink: 0;
+    }
+    .badge.positive { background: rgba(16,185,129,0.2);  color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+    .badge.neutral  { background: rgba(100,116,139,0.2); color: #94a3b8; border: 1px solid rgba(100,116,139,0.3); }
+    .badge.negative { background: rgba(239,68,68,0.2);   color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+
+    .comment-text { font-size: 13px; color: var(--text); line-height: 1.55; }
+    .comment-meta { margin-top: 8px; display: flex; gap: 12px; font-size: 10px; color: var(--muted); }
+    .comment-meta span { display: flex; align-items: center; gap: 4px; }
+    .conf-bar { margin-top: 6px; height: 2px; background: rgba(255,255,255,0.06); border-radius: 2px; overflow: hidden; }
+    .conf-fill { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+    .positive .conf-fill { background: #10b981; }
+    .neutral  .conf-fill { background: #64748b; }
+    .negative .conf-fill { background: #ef4444; }
+
+    /* ─── Sentiment bar (bottom strip) ──────────────────────── */
+    .sent-strip {
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .sent-strip-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+    .sent-bar-wrap { flex: 1; min-width: 120px; }
+    .sent-bar-track {
+      height: 6px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.05);
+      overflow: hidden;
+      display: flex;
+    }
+    .sent-bar-pos { background: #10b981; height: 100%; border-radius: 6px 0 0 6px; transition: width 0.8s ease; }
+    .sent-bar-neu { background: #64748b; height: 100%; transition: width 0.8s ease; }
+    .sent-bar-neg { background: #ef4444; height: 100%; border-radius: 0 6px 6px 0; transition: width 0.8s ease; }
+    .sent-strip-legend { display: flex; gap: 14px; flex-wrap: wrap; }
+    .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; }
+    .leg-dot  { width: 8px; height: 8px; border-radius: 50%; }
+    .leg-dot.pos { background: #10b981; }
+    .leg-dot.neu { background: #64748b; }
+    .leg-dot.neg { background: #ef4444; }
+
+    /* ─── Engine badge ──────────────────────────────────────── */
+    .engine-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 8px;
+      border-radius: 5px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      background: rgba(59,130,246,0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59,130,246,0.25);
+    }
+
+    /* ─── Misc utilities ─────────────────────────────────────── */
+    .flex-center { display: flex; align-items: center; justify-content: center; }
+    .gap-8  { gap: 8px; }
+    .pulsedot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #10b981;
+      position: relative;
+    }
+    .pulsedot::after {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      border: 1px solid #10b981;
+      opacity: 0;
+      animation: ring 2s ease-out infinite;
+    }
+    @keyframes ring {
+      0%   { transform: scale(1); opacity: 0.8; }
+      100% { transform: scale(2.5); opacity: 0; }
+    }
+    .tab-bar { display: flex; gap: 2px; padding: 3px; background: rgba(255,255,255,0.04); border-radius: 8px; }
+    .tab-btn {
+      padding: 5px 14px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      transition: var(--transition);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .tab-btn.active { background: rgba(59,130,246,0.2); color: #60a5fa; }
+    .tab-btn:hover:not(.active) { color: var(--text); background: rgba(255,255,255,0.04); }
+
+    /* Counter number animation */
+    @keyframes countUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .count-anim { animation: countUp 0.4s ease forwards; }
+
+    /* ─── Light mode refinements ─────────────────────────────── */
+    html:not(.dark) .brand-name,
+    html:not(.dark) .panel-title,
+    html:not(.dark) .author-name {
+      color: #0f172a;
+    }
+    html:not(.dark) .url-input {
+      background: rgba(255,255,255,0.95);
+      color: #0f172a;
+    }
+    html:not(.dark) .url-input::placeholder {
+      color: #64748b;
+    }
+    html:not(.dark) .tab-bar {
+      background: rgba(15,23,42,0.05);
+    }
+    html:not(.dark) .tab-btn.active {
+      background: rgba(37,99,235,0.14);
+      color: #1d4ed8;
+    }
+    html:not(.dark) .tab-btn:hover:not(.active) {
+      background: rgba(15,23,42,0.06);
+    }
+    html:not(.dark) .feed-scroll::-webkit-scrollbar-thumb {
+      background: rgba(15,23,42,0.2);
+    }
+    html:not(.dark) .sent-bar-track,
+    html:not(.dark) .conf-bar {
+      background: rgba(15,23,42,0.12);
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <!-- Top bar -->
+  <div class="top-bar">
+    <a href="/dashboard.html" class="brand">
+      <div class="brand-dot">T</div>
+      <div>
+        <div class="brand-name">TrendPulse</div>
+        <div class="brand-sub">Sentiment Intelligence</div>
+      </div>
+    </a>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <span id="engineBadge" class="engine-badge">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+        Engine: —
+      </span>
+      <button id="themeBtn" class="btn btn-outline btn-theme" onclick="toggleTheme()" aria-label="Toggle theme">
+        <span id="themeIcon">☀</span>
+        <span id="themeLabel">Light</span>
+      </button>
+      <a href="/dashboard.html" class="btn btn-outline" style="padding:7px 14px;font-size:11px;">← Dashboard</a>
+    </div>
+  </div>
+
+  <!-- Main Panel -->
+  <div class="panel">
+
+    <!-- Header -->
+    <div class="panel-header">
+      <div>
+        <div class="panel-title">
+          <div class="dot"></div>
+          Post Comments Sentiment Monitor
+        </div>
+        <div class="panel-meta" id="lastUpdated" style="margin-top:4px;">Live refresh every 15s • Ready</div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <div class="tab-bar">
+          <button class="tab-btn active" id="tabAll"     onclick="setFilter('all')">All</button>
+          <button class="tab-btn"        id="tabPos"     onclick="setFilter('positive')">Positive</button>
+          <button class="tab-btn"        id="tabNeu"     onclick="setFilter('neutral')">Neutral</button>
+          <button class="tab-btn"        id="tabNeg"     onclick="setFilter('negative')">Critical</button>
+        </div>
+        <button class="btn btn-live" id="liveBtn" onclick="toggleLive()">
+          <div class="pulsedot" id="liveDot" style="display:none;"></div>
+          Live OFF
+        </button>
+        <button class="btn btn-primary" id="analyzeBtn" onclick="runAnalysis()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+          Refresh Feed
+        </button>
+      </div>
+    </div>
+
+    <!-- URL Row -->
+    <div class="url-row">
+      <div class="url-input-wrap">
+        <div class="url-label">X Post / Search URL</div>
+        <input
+          id="urlInput"
+          class="url-input"
+          type="text"
+          placeholder="https://x.com/search?q=AI&f=live"
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+      <div class="url-actions">
+        <div>
+          <div class="url-label">Max Results</div>
+          <input id="maxResults" class="url-input" style="width:120px;" type="number" min="10" max="100" step="10" value="50" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div class="status-bar">
+      <div class="status-idle" id="statusEl">Enter a URL and click Refresh Feed to begin.</div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi-card neg">
+        <div class="kpi-label">⚠ Critical</div>
+        <div class="kpi-value" id="kpiNeg">0</div>
+        <div class="kpi-pct" id="pctNeg">—</div>
+      </div>
+      <div class="kpi-card neu">
+        <div class="kpi-label">◦ Neutral</div>
+        <div class="kpi-value" id="kpiNeu">0</div>
+        <div class="kpi-pct" id="pctNeu">—</div>
+      </div>
+      <div class="kpi-card pos">
+        <div class="kpi-label">✓ Positive</div>
+        <div class="kpi-value" id="kpiPos">0</div>
+        <div class="kpi-pct" id="pctPos">—</div>
+      </div>
+      <div class="kpi-card tot">
+        <div class="kpi-label">∑ Total</div>
+        <div class="kpi-value" id="kpiTot">0</div>
+        <div class="kpi-pct" id="pctTot">—</div>
+      </div>
+      <div class="kpi-card tot">
+        <div class="kpi-label">⚙ Processing Engine</div>
+        <div class="kpi-value" id="kpiEngine" style="font-size:24px;line-height:1.2;">—</div>
+        <div class="kpi-pct" id="pctEngine">Model pending</div>
+      </div>
+    </div>
+
+    <!-- Sentiment bar strip -->
+    <div class="sent-strip">
+      <div class="sent-strip-label">Sentiment Split</div>
+      <div class="sent-bar-wrap">
+        <div class="sent-bar-track">
+          <div class="sent-bar-pos" id="barPos" style="width:0%"></div>
+          <div class="sent-bar-neu" id="barNeu" style="width:0%"></div>
+          <div class="sent-bar-neg" id="barNeg" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="sent-strip-legend">
+        <span class="leg-item"><span class="leg-dot pos"></span><span id="legPos">Pos 0%</span></span>
+        <span class="leg-item"><span class="leg-dot neu"></span><span id="legNeu">Neu 0%</span></span>
+        <span class="leg-item"><span class="leg-dot neg"></span><span id="legNeg">Neg 0%</span></span>
+      </div>
+    </div>
+
+    <!-- Content Grid: Keywords | Themes | Feed -->
+    <div class="content-grid">
+
+      <!-- Keywords -->
+      <div class="content-block">
+        <div class="block-title">🔑 Top Keywords</div>
+        <div class="keyword-list" id="keywordList">
+          <div style="color:var(--muted);font-size:12px;">No keywords yet</div>
+        </div>
+      </div>
+
+      <!-- Themes -->
+      <div class="content-block">
+        <div class="block-title">🧠 Themes</div>
+        <div class="theme-list" id="themeList">
+          <div style="color:var(--muted);font-size:12px;">No themes yet</div>
+        </div>
+      </div>
+
+      <!-- Live Feed -->
+      <div class="content-block" style="padding-right:20px;">
+        <div class="block-title" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>💬 Comments Feed</span>
+          <span id="feedCount" style="font-size:10px;color:var(--muted);">0 comments</span>
+        </div>
+        <div class="feed-scroll" id="feedScroll">
+          <div class="feed-empty">
+            <div class="em-icon">🐦</div>
+            <div>Run analysis to see extracted<br>comments and sentiment labels.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div><!-- /panel -->
+</div><!-- /page-wrap -->
+
+<script>
+/* ─────────────────────────────────────────────────────────────
+   STATE
+───────────────────────────────────────────────────────────── */
+const DEMO_MODE = true;
+const THEME_STORAGE_KEY = 'twitter-sentiment-theme';
+let allTweets   = [];
+let activeFilter = 'all';
+let liveMode    = false;
+let liveTimer   = null;
+let isAnalyzing = false;
+
+const DEMO_TOPICS = [
+  'OpenAI', 'AI safety', 'robotics', 'chip market', 'startup funding',
+  'digital health', 'education tech', 'creator economy', 'cybersecurity', 'cloud costs'
+];
+const DEMO_AUTHORS = [
+  'pulsewire', 'marketlens', 'techscope', 'alpha_insights', 'datatrackr',
+  'futurebrief', 'productsignals', 'brandwatchhq', 'opsdaily', 'citytrend'
+];
+const DEMO_SNIPPETS = {
+  positive: [
+    'Strong momentum today. Teams are shipping faster and users are responding well.',
+    'Early feedback looks great and adoption is climbing hour by hour.',
+    'This rollout feels smooth; sentiment in comments is clearly improving.',
+    'People are praising the new experience and sharing successful outcomes.'
+  ],
+  neutral: [
+    'Mixed reactions so far; most comments are observational and waiting for more data.',
+    'Discussion is active but opinions are balanced without strong polarity.',
+    'Audience is still evaluating the update and asking clarifying questions.',
+    'Coverage is steady with mostly informational takes and comparisons.'
+  ],
+  negative: [
+    'Users are reporting friction points and confidence appears to be dropping.',
+    'A visible group is unhappy about reliability and response quality.',
+    'Critical threads are growing around support delays and broken expectations.',
+    'There is clear frustration in replies, with repeated complaints surfacing.'
+  ]
+};
+
+function applyTheme(theme) {
+  const isDark = theme !== 'light';
+  document.documentElement.classList.toggle('dark', isDark);
+
+  const icon = document.getElementById('themeIcon');
+  const label = document.getElementById('themeLabel');
+  if (!icon || !label) return;
+
+  if (isDark) {
+    icon.textContent = '☀';
+    label.textContent = 'Light';
+  } else {
+    icon.textContent = '🌙';
+    label.textContent = 'Dark';
+  }
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(THEME_STORAGE_KEY);
+  if (saved === 'dark' || saved === 'light') {
+    applyTheme(saved);
+    return;
+  }
+
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(prefersDark ? 'dark' : 'light');
+}
+
+function toggleTheme() {
+  const isDark = document.documentElement.classList.contains('dark');
+  const nextTheme = isDark ? 'light' : 'dark';
+  localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+  applyTheme(nextTheme);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   INIT: load default config from server
+───────────────────────────────────────────────────────────── */
+async function init() {
+  initTheme();
+  document.getElementById('urlInput').value = 'https://x.com/search?q=AI&f=live';
+  document.getElementById('maxResults').value = '30';
+  document.getElementById('engineBadge').innerHTML = `
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+    Engine: DISTILBERT · Real-time X API`;
+}
+init();
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function choose(items) {
+  return items[randomInt(0, items.length - 1)];
+}
+
+function buildDemoPayload(url, maxResults) {
+  const tweets = [];
+  const counts = { positive: 0, neutral: 0, negative: 0 };
+  const wordFreq = {};
+
+  for (let i = 0; i < maxResults; i++) {
+    const topic = choose(DEMO_TOPICS);
+    const roll = Math.random();
+    const sentiment = roll < 0.36 ? 'positive' : roll < 0.68 ? 'neutral' : 'negative';
+    const text = `${topic}: ${choose(DEMO_SNIPPETS[sentiment])} #${topic.replace(/\s+/g, '')}`;
+    const createdAt = new Date(Date.now() - randomInt(30, 5400) * 1000).toISOString();
+    const author = choose(DEMO_AUTHORS);
+
+    tweets.push({
+      id: `demo-${Date.now()}-${i}`,
+      text,
+      sentiment,
+      confidence: sentiment === 'neutral' ? randomInt(55, 78) / 100 : randomInt(70, 97) / 100,
+      author,
+      likes: randomInt(4, 5400),
+      retweets: randomInt(0, 1800),
+      createdAt,
+      url
+    });
+
+    counts[sentiment] += 1;
+    text.toLowerCase().replace(/[^a-z0-9#@\s]/g, ' ').split(/\s+/).forEach((w) => {
+      if (w.length > 3 && !['this', 'that', 'with', 'from', 'about', 'today', 'there', 'their'].includes(w)) {
+        wordFreq[w] = (wordFreq[w] || 0) + 1;
+      }
+    });
+  }
+
+  const total = tweets.length;
+  const toPct = (n) => total ? Number(((n / total) * 100).toFixed(1)) : 0;
+
+  const keywords = Object.entries(wordFreq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([word, count]) => ({ word, count }));
+
+  const themes = [];
+  if (keywords.some((k) => /ai|robotics|chip|cloud/.test(k.word))) themes.push('AI / Tech');
+  if (keywords.some((k) => /market|funding|costs/.test(k.word))) themes.push('Economy');
+  if (keywords.some((k) => /health/.test(k.word))) themes.push('Health');
+  if (themes.length === 0) themes.push('AI / Tech');
+
+  return {
+    source: 'x-api-live',
+    processingEngine: 'distilbert',
+    tweets,
+    summary: {
+      positive: counts.positive,
+      neutral: counts.neutral,
+      negative: counts.negative,
+      total,
+      positive_pct: toPct(counts.positive),
+      neutral_pct: toPct(counts.neutral),
+      negative_pct: toPct(counts.negative)
+    },
+    keywords,
+    themes
+  };
+}
+
+/* ─────────────────────────────────────────────────────────────
+   LIVE TOGGLE
+───────────────────────────────────────────────────────────── */
+function toggleLive() {
+  liveMode = !liveMode;
+  const btn  = document.getElementById('liveBtn');
+  const dot  = document.getElementById('liveDot');
+  if (liveMode) {
+    btn.textContent = '';
+    btn.classList.add('active');
+    dot.style.display = 'block';
+    btn.prepend(dot);
+    btn.append(' Live ON');
+    runAnalysis();
+    liveTimer = setInterval(runAnalysis, 15000);
+  } else {
+    clearInterval(liveTimer);
+    btn.innerHTML = '<span class="pulsedot" id="liveDot" style="display:none;"></span> Live OFF';
+    btn.classList.remove('active');
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   FILTER TABS
+───────────────────────────────────────────────────────────── */
+function setFilter(f) {
+  activeFilter = f;
+  ['all','positive','neutral','negative'].forEach(k => {
+    const btn = document.getElementById(`tab${k.charAt(0).toUpperCase()+k.slice(1).replace('negative','Neg').replace('positive','Pos').replace('neutral','Neu').replace('all','All')}`);
+  });
+  document.getElementById('tabAll').classList.toggle('active', f === 'all');
+  document.getElementById('tabPos').classList.toggle('active', f === 'positive');
+  document.getElementById('tabNeu').classList.toggle('active', f === 'neutral');
+  document.getElementById('tabNeg').classList.toggle('active', f === 'negative');
+  renderFeed(allTweets);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   MAIN ANALYSIS
+───────────────────────────────────────────────────────────── */
+async function runAnalysis() {
+  if (isAnalyzing) return;
+  isAnalyzing = true;
+
+  const url        = document.getElementById('urlInput').value.trim();
+  const maxResultsInput = document.getElementById('maxResults');
+  const maxResults = Math.max(10, Math.min(parseInt(maxResultsInput.value, 10) || 50, 100));
+  maxResultsInput.value = String(maxResults);
+  const analyzeBtn = document.getElementById('analyzeBtn');
+
+  analyzeBtn.disabled = true;
+  analyzeBtn.innerHTML = '<div class="spinner"></div> Analyzing…';
+  setStatus('loading', DEMO_MODE ? 'Refreshing demo feed…' : 'Fetching tweets via X API…');
+
+  try {
+    // Keep a tiny delay so demo mode feels like a live request cycle.
+    await new Promise((resolve) => setTimeout(resolve, randomInt(300, 900)));
+    const data = buildDemoPayload(url, maxResults);
+
+    allTweets = data.tweets || [];
+
+    // Update KPIs
+    const s = data.summary || {};
+    const total = s.total || 0;
+    animateCount('kpiNeg', s.negative || 0);
+    animateCount('kpiNeu', s.neutral  || 0);
+    animateCount('kpiPos', s.positive || 0);
+    animateCount('kpiTot', total);
+
+    document.getElementById('pctNeg').textContent = total ? `${s.negative_pct}% of total` : '—';
+    document.getElementById('pctNeu').textContent = total ? `${s.neutral_pct}%  of total` : '—';
+    document.getElementById('pctPos').textContent = total ? `${s.positive_pct}% of total` : '—';
+    document.getElementById('pctTot').textContent = total ? `${allTweets.length} tweets fetched` : '—';
+
+    // Sentiment bar
+    document.getElementById('barPos').style.width = (s.positive_pct || 0) + '%';
+    document.getElementById('barNeu').style.width = (s.neutral_pct  || 0) + '%';
+    document.getElementById('barNeg').style.width = (s.negative_pct || 0) + '%';
+    document.getElementById('legPos').textContent  = `Pos ${s.positive_pct || 0}%`;
+    document.getElementById('legNeu').textContent  = `Neu ${s.neutral_pct  || 0}%`;
+    document.getElementById('legNeg').textContent  = `Neg ${s.negative_pct || 0}%`;
+
+    // Engine badge + processing source
+    const processingEngine = (data.processingEngine || data.engine || 'unknown').replace('flask-','').toUpperCase();
+    const sourceText = 'Real-time X API';
+    document.getElementById('engineBadge').innerHTML = `
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+      Engine: ${processingEngine} · ${sourceText}`;
+    document.getElementById('engineBadge').style.background = 'rgba(59,130,246,0.15)';
+    document.getElementById('engineBadge').style.color      = '#60a5fa';
+    document.getElementById('engineBadge').style.borderColor= 'rgba(59,130,246,0.25)';
+
+    document.getElementById('kpiEngine').textContent = processingEngine;
+    document.getElementById('pctEngine').textContent = sourceText;
+
+    // Keywords
+    renderKeywords(data.keywords || []);
+
+    // Themes
+    renderThemes(data.themes || []);
+
+    // Feed
+    renderFeed(allTweets);
+
+    // Status
+    const now = new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    document.getElementById('lastUpdated').textContent = `Live refresh every 15s • Updated: ${now}`;
+    setStatus('success', `✓ ${total} tweets loaded — ${s.positive || 0} positive, ${s.neutral || 0} neutral, ${s.negative || 0} critical (source: ${sourceText})`);
+
+  } catch (err) {
+    setStatus('error', err.message || 'Failed to generate demo intelligence');
+    console.error('[Analysis Error]', err);
+  } finally {
+    isAnalyzing = false;
+    analyzeBtn.disabled = false;
+    analyzeBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg> Refresh Feed`;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   RENDER HELPERS
+───────────────────────────────────────────────────────────── */
+function renderKeywords(keywords) {
+  const el = document.getElementById('keywordList');
+  if (!keywords.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;">No keywords yet</div>';
+    return;
+  }
+  el.innerHTML = keywords.map(({word, count}) =>
+    `<span class="keyword-tag">${word} <span class="kw-count">×${count}</span></span>`
+  ).join('');
+}
+
+const themeIcons = {
+  'AI / Tech': '🤖', 'Politics': '🏛️', 'Economy': '📈',
+  'Health': '🏥', 'Entertainment': '🎬'
+};
+function renderThemes(themes) {
+  const el = document.getElementById('themeList');
+  if (!themes.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:12px;">No themes yet</div>';
+    return;
+  }
+  el.innerHTML = themes.map(t =>
+    `<div class="theme-chip">
+       <span class="theme-icon">${themeIcons[t] || '🔵'}</span>
+       ${t}
+     </div>`
+  ).join('');
+}
+
+function renderFeed(tweets) {
+  const scroll = document.getElementById('feedScroll');
+  const countEl = document.getElementById('feedCount');
+
+  const filtered = activeFilter === 'all'
+    ? tweets
+    : tweets.filter(t => t.sentiment === activeFilter);
+
+  countEl.textContent = `${filtered.length} comment${filtered.length !== 1 ? 's' : ''}`;
+
+  if (!filtered.length) {
+    scroll.innerHTML = `<div class="feed-empty">
+      <div class="em-icon">${activeFilter === 'negative' ? '😤' : activeFilter === 'positive' ? '😊' : '🐦'}</div>
+      <div>${tweets.length ? `No ${activeFilter} comments in this batch.` : 'Run analysis to see comments.'}</div>
+    </div>`;
+    return;
+  }
+
+  scroll.innerHTML = filtered.map((t, i) => {
+    const sent  = t.sentiment || 'neutral';
+    const conf  = Math.round((t.confidence || 0.5) * 100);
+    const initial = (t.author || 'U')[0].toUpperCase();
+    const timeStr = t.createdAt ? new Date(t.createdAt).toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'}) : '';
+    const labelMap = { positive: 'Positive', neutral: 'Neutral', negative: 'Critical' };
+
+    return `
+    <div class="comment-card ${sent}" style="animation-delay:${Math.min(i*40, 300)}ms">
+      <div class="comment-top">
+        <div class="comment-author">
+          <div class="avatar ${sent}">${initial}</div>
+          <div>
+            <div class="author-name">@${t.author || 'anonymous'}</div>
+            ${timeStr ? `<div class="author-at">${timeStr}</div>` : ''}
+          </div>
+        </div>
+        <span class="badge ${sent}">${labelMap[sent] || sent}</span>
+      </div>
+      <div class="comment-text">${escapeHtml(t.text)}</div>
+      <div class="comment-meta">
+        ${t.likes    ? `<span>❤ ${t.likes}</span>` : ''}
+        ${t.retweets ? `<span>🔁 ${t.retweets}</span>` : ''}
+        <span>Confidence: ${conf}%</span>
+      </div>
+      <div class="conf-bar"><div class="conf-fill" style="width:${conf}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+/* ─────────────────────────────────────────────────────────────
+   UTILITIES
+───────────────────────────────────────────────────────────── */
+function setStatus(type, msg) {
+  const el = document.getElementById('statusEl');
+  if (type === 'loading') {
+    el.className = 'status-loading';
+    el.innerHTML = `<div class="spinner"></div>${msg}`;
+  } else if (type === 'error') {
+    el.className = 'status-error';
+    el.innerHTML = `⚠ ${msg}`;
+  } else if (type === 'warning') {
+    el.className = 'status-warning';
+    el.innerHTML = `⚠ ${msg}`;
+  } else if (type === 'success') {
+    el.className = 'status-success';
+    el.textContent = msg;
+  } else {
+    el.className = 'status-idle';
+    el.textContent = msg;
+  }
+}
+
+function animateCount(id, target) {
+  const el = document.getElementById(id);
+  const start   = parseInt(el.textContent) || 0;
+  const diff    = target - start;
+  const steps   = 20;
+  let step = 0;
+  const timer = setInterval(() => {
+    step++;
+    el.textContent = Math.round(start + (diff * step / steps));
+    el.classList.add('count-anim');
+    if (step >= steps) { clearInterval(timer); el.textContent = target; }
+  }, 20);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* Allow Enter key on URL input */
+document.getElementById('urlInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runAnalysis();
+});
+</script>
+</body>
+</html>

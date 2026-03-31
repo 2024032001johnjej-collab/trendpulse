@@ -1,0 +1,21 @@
+{
+  "id2label": {
+    "0": "negative",
+    "1": "neutral",
+    "2": "positive"
+  },
+  "label2id": {
+    "negative": 0,
+    "neutral": 1,
+    "positive": 2
+  },
+  "num_labels": 3,
+  "val_accuracy": 0.8918,
+  "dataset": "Stanford Direct Download",
+  "classes": [
+    "negative",
+    "neutral",
+    "positive"
+  ],
+  "team": "Cyber Techies \u2014 TrendPulse PS-04"
+}

@@ -28,7 +28,15 @@ _vader    = None
 BASE_DIR = Path(__file__).resolve().parent
 MODEL_DIR_ENV = os.getenv("MODEL_DIR")
 MODEL_DIR = str((BASE_DIR / "trendpulse_model").resolve()) if not MODEL_DIR_ENV else str(Path(MODEL_DIR_ENV).resolve())
-USE_TRAINED_MODEL = Path(MODEL_DIR).exists()
+
+def has_model_weights(model_dir: str) -> bool:
+    p = Path(model_dir)
+    if not p.exists() or not p.is_dir():
+        return False
+    # Hugging Face checkpoints are usually stored with one of these files.
+    return any((p / name).exists() for name in ("model.safetensors", "pytorch_model.bin"))
+
+USE_TRAINED_MODEL = has_model_weights(MODEL_DIR)
 ALLOWED_ENGINES = {"vader", "bert", "both"}
 
 app = Flask(__name__)
@@ -92,6 +100,7 @@ def vader_analyze(text: str) -> dict:
     return {
         "label": label,
         "confidence": confidence,
+        "confidence_pct": round(confidence * 100, 1),
         "scores": scores,
         "engine": "vader",
     }
@@ -106,6 +115,7 @@ def bert_analyze(text: str) -> dict:
         return {
             "label": label,
             "confidence": round(result["score"], 4),
+            "confidence_pct": round(float(result["score"]) * 100, 1),
             "engine": "distilbert",
         }
     except Exception as e:
@@ -140,10 +150,14 @@ def analyze_text(text: str, engine: str = "both") -> dict:
         result = {
             "label": final_label,
             "confidence": blended_conf,
+            "confidence_pct": round(blended_conf * 100, 1),
             "vader": vader_result,
             "bert": bert_result,
             "engine": "hybrid",
         }
+
+    if "confidence_pct" not in result:
+        result["confidence_pct"] = round(float(result.get("confidence", 0.0)) * 100, 1)
 
     result["text"] = text
     result["processing_ms"] = round((time.time() - start) * 1000, 2)

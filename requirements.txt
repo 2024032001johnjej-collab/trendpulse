@@ -22,6 +22,7 @@ flask-bcrypt>=1.0.1
 flask-login>=0.6.3
 flask-session>=0.8.0
 python-dotenv>=1.0.1
+requests>=2.32.0
 
 # Database
 pymongo>=4.5.0
